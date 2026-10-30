@@ -1,0 +1,45 @@
+<div class="input-group">
+    <span class="input-group-text" aria-hidden="true">
+        <i class="bi bi-search"></i>
+    </span>
+    <input type="search"
+           class="form-control"
+           value="@Value"
+           @oninput="HandleInput"
+           placeholder="@Placeholder"
+           aria-label="@Placeholder" />
+
+    @if (!string.IsNullOrWhiteSpace(Value))
+    {
+        <button type="button"
+                class="btn btn-outline-secondary"
+                aria-label="Clear search"
+                @onclick="Clear">
+            Clear
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Value { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    [Parameter]
+    public string Placeholder { get; set; }
+        = "Search...";
+
+    private async Task HandleInput(
+        ChangeEventArgs args)
+    {
+        await ValueChanged.InvokeAsync(
+            args.Value?.ToString());
+    }
+
+    private async Task Clear()
+    {
+        await ValueChanged.InvokeAsync(null);
+    }
+}

@@ -1,0 +1,361 @@
+
+
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/columns/{ColumnId:guid}"
+
+@using FlowBoard.Shared.DTOs.BoardColumns
+@using FlowBoard.Shared.DTOs.Cards
+@using FlowBoard.Shared.DTOs.Common
+
+@inject IBoardColumnApiService BoardColumnApiService
+@inject ICardApiService CardApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Column</PageTitle>
+
+<div class="page-shell">
+
+    <!-- ============================================================
+         HEADER
+         ============================================================ -->
+
+    <header class="mb-4">
+        <Breadcrumbs>
+            <li class="breadcrumb-item">
+                <NavLink href="/workspaces">Workspaces</NavLink>
+            </li>
+            <li class="breadcrumb-item">
+                <NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink>
+            </li>
+            <li class="breadcrumb-item">
+                <NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">
+                @(column?.Name ?? "Column")
+            </li>
+        </Breadcrumbs>
+
+        @if (column is not null)
+        {
+            <p class="section-label mt-4 mb-2">Column</p>
+            <h1 class="page-title">
+                @column.Name
+            </h1>
+
+            <p class="page-subtitle">
+                Manage cards in this column.
+            </p>
+        }
+        else
+        {
+            <h1 class="page-title mt-4">
+                Column
+            </h1>
+        }
+
+    </header>
+
+
+    <!-- ============================================================
+         LOADING
+         ============================================================ -->
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+
+            <div class="spinner-border">
+            </div>
+
+            <p class="text-muted mt-3">
+                Loading cards...
+            </p>
+
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <!-- ========================================================
+             ERROR
+             ======================================================== -->
+
+        <div class="alert alert-danger">
+
+            @errorMessage
+
+        </div>
+    }
+    else
+    {
+        <!-- ========================================================
+             CARDS
+             ======================================================== -->
+
+        <div class="search-wrap mb-4">
+            <SearchBox
+                @bind-Value="cardSearch"
+                @bind-Value:after="SearchCardsAsync"
+                Placeholder="Search cards..." />
+        </div>
+
+        @if (isLoadingCards)
+        {
+            <div class="d-flex align-items-center gap-2 text-muted py-3" role="status">
+                <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                Loading cards...
+            </div>
+        }
+        else
+        {
+            <CardList
+                Cards="cards"
+                SearchTerm="cardSearch"
+                OnCreate="CreateCard"
+                OnOpen="OpenCard"
+                OnEdit="EditCard"
+                OnDelete="DeleteCard" />
+
+            @if (totalCount > 0)
+            {
+                <Pagination
+                    CurrentPage="page"
+                    TotalPages="totalPages"
+                    TotalCount="totalCount"
+                    PageChanged="LoadCardsAsync" />
+            }
+        }
+    }
+
+</div>
+
+
+@code {
+
+    // ============================================================
+    // ROUTE PARAMETERS
+    // ============================================================
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    [Parameter]
+    public Guid ColumnId { get; set; }
+
+
+    // ============================================================
+    // STATE
+    // ============================================================
+
+    private BoardColumnResponse? column;
+
+    private List<CardResponse> cards = [];
+
+    private string? cardSearch;
+
+    private int page = 1;
+
+    private int totalPages;
+
+    private int totalCount;
+
+    private const int PageSize = 10;
+
+    private bool isLoading;
+
+    private bool isLoadingCards;
+
+    private string? errorMessage;
+
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+
+    // ============================================================
+    // LOAD
+    // ============================================================
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+
+        errorMessage = null;
+
+        try
+        {
+            await LoadColumnAsync();
+
+            await LoadCardsAsync();
+        }
+        catch
+        {
+            errorMessage =
+                "Unable to load this column. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+
+    // ============================================================
+    // LOAD COLUMN
+    // ============================================================
+
+    private async Task LoadColumnAsync()
+    {
+        column =
+            await BoardColumnApiService.GetAsync(
+                BoardId,
+                ColumnId);
+    }
+
+
+    // ============================================================
+    // LOAD CARDS
+    // ============================================================
+
+    private async Task LoadCardsAsync(int requestedPage = 1)
+    {
+        isLoadingCards = true;
+        errorMessage = null;
+
+        var request = new CardQueryRequest
+        {
+            Page = requestedPage,
+            PageSize = PageSize,
+            Search = cardSearch
+        };
+
+        try
+        {
+            var result =
+                await CardApiService.GetByColumnAsync(
+                    ColumnId,
+                    request);
+
+            if (result is null)
+            {
+                cards = [];
+                totalPages = 0;
+                totalCount = 0;
+                errorMessage = "Unable to load cards. Please try again.";
+                return;
+            }
+
+            page = result.Page;
+            totalPages = result.TotalPages;
+            totalCount = result.TotalCount;
+            cards = result.Items.ToList();
+
+            if (totalPages > 0 && page > totalPages)
+            {
+                await LoadCardsAsync(totalPages);
+            }
+        }
+        catch
+        {
+            cards = [];
+            totalPages = 0;
+            totalCount = 0;
+            errorMessage = "Unable to load cards. Please try again.";
+        }
+        finally
+        {
+            isLoadingCards = false;
+        }
+    }
+
+    private Task SearchCardsAsync()
+    {
+        return LoadCardsAsync(1);
+    }
+
+
+    // ============================================================
+    // CREATE CARD
+    // ============================================================
+
+    private void CreateCard()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}" +
+            $"/boards/{BoardId}" +
+            $"/columns/{ColumnId}" +
+            "/cards/create");
+    }
+
+
+    // ============================================================
+    // OPEN CARD
+    // ============================================================
+
+    private void OpenCard(
+        CardResponse card)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}" +
+            $"/boards/{BoardId}" +
+            $"/columns/{ColumnId}" +
+            $"/cards/{card.Id}");
+    }
+
+
+    // ============================================================
+    // EDIT CARD
+    // ============================================================
+
+    private void EditCard(
+        CardResponse card)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}" +
+            $"/boards/{BoardId}" +
+            $"/columns/{ColumnId}" +
+            $"/cards/{card.Id}/edit");
+    }
+
+
+    // ============================================================
+    // DELETE CARD
+    // ============================================================
+
+    private async Task DeleteCard(
+        CardResponse card)
+    {
+        var success =
+            await CardApiService.DeleteAsync(
+                card.Id);
+
+        if (!success)
+        {
+            errorMessage =
+                "Unable to delete the card.";
+
+            return;
+        }
+
+        await LoadCardsAsync(page);
+    }
+
+
+    // ============================================================
+    // BACK TO BOARD
+    // ============================================================
+
+    private void BackToBoard()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}" +
+            $"/boards/{BoardId}");
+    }
+}

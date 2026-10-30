@@ -1,0 +1,11 @@
+{
+  "Version": 1,
+  "Hash": "pnb4ZG9YMhGvAWMae00TqfCcQmtz8+EI3yFRogwgEr0=",
+  "Source": "FlowBoard.Api",
+  "BasePath": "_content/FlowBoard.Api",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": []
+}

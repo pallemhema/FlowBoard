@@ -1,0 +1,137 @@
+@using FlowBoard.Web.Services.UI
+
+@implements IDisposable
+
+@inject ToastService ToastService
+
+@if (!string.IsNullOrWhiteSpace(ToastService.Message))
+{
+    <div class="toast-container position-fixed top-0 end-0 p-3"
+         style="z-index: 1055;">
+
+        <div class="toast show"
+             role="alert">
+
+            <div class="toast-header">
+
+                <strong class="me-auto">
+                    @GetTitle()
+                </strong>
+
+                <button type="button"
+                        class="btn-close"
+                        @onclick="Close">
+                </button>
+
+            </div>
+
+            <div class="toast-body">
+                @ToastService.Message
+            </div>
+
+        </div>
+
+    </div>
+}
+
+@code {
+
+    private CancellationTokenSource?
+        _dismissCancellationTokenSource;
+
+    // ============================================================
+    // INITIALIZE
+    // ============================================================
+
+    protected override void OnInitialized()
+    {
+        ToastService.OnChange += HandleToastChanged;
+    }
+
+    // ============================================================
+    // TOAST CHANGED
+    // ============================================================
+
+    private void HandleToastChanged()
+    {
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+
+            await StartAutoDismissAsync();
+        });
+    }
+
+    // ============================================================
+    // AUTO DISMISS
+    // ============================================================
+
+    private async Task StartAutoDismissAsync()
+    {
+        // Cancel previous dismissal timer.
+        _dismissCancellationTokenSource?.Cancel();
+        _dismissCancellationTokenSource?.Dispose();
+
+        _dismissCancellationTokenSource =
+            new CancellationTokenSource();
+
+        var cancellationToken =
+            _dismissCancellationTokenSource.Token;
+
+        try
+        {
+            await Task.Delay(
+                TimeSpan.FromSeconds(3),
+                cancellationToken);
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                ToastService.Clear();
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // Expected when another toast appears
+            // before the previous 3 seconds finish.
+        }
+    }
+
+    // ============================================================
+    // MANUAL CLOSE
+    // ============================================================
+
+    private void Close()
+    {
+        _dismissCancellationTokenSource?.Cancel();
+
+        ToastService.Clear();
+    }
+
+    // ============================================================
+    // TITLE
+    // ============================================================
+
+    private string GetTitle()
+    {
+        return ToastService.Type switch
+        {
+            ToastType.Success => "Success",
+            ToastType.Error => "Error",
+            ToastType.Warning => "Warning",
+            ToastType.Info => "Information",
+            _ => "Notification"
+        };
+    }
+
+    // ============================================================
+    // DISPOSE
+    // ============================================================
+
+    public void Dispose()
+    {
+        ToastService.OnChange -= HandleToastChanged;
+
+        _dismissCancellationTokenSource?.Cancel();
+        _dismissCancellationTokenSource?.Dispose();
+    }
+}

@@ -1,0 +1,17 @@
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/bin/Debug/net8.0/FlowBoard.Infrastructure.deps.json
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/bin/Debug/net8.0/FlowBoard.Infrastructure.runtimeconfig.json
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/bin/Debug/net8.0/FlowBoard.Infrastructure.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/bin/Debug/net8.0/FlowBoard.Infrastructure.pdb
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/bin/Debug/net8.0/FlowBoard.Domain.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/bin/Debug/net8.0/FlowBoard.Domain.pdb
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.csproj.AssemblyReference.cache
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.GeneratedMSBuildEditorConfig.editorconfig
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.AssemblyInfoInputs.cache
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.AssemblyInfo.cs
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.csproj.CoreCompileInputs.cache
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.csproj.CopyComplete
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/refint/FlowBoard.Infrastructure.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.pdb
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.genruntimeconfig.cache
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/ref/FlowBoard.Infrastructure.dll

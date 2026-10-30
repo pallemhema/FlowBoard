@@ -1,0 +1,103 @@
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationService AuthenticationService
+@inject NavigationManager Navigation
+
+<div class="sidebar-brand">
+    <a class="brand-link" href="/">
+        <span class="brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+        <span>FlowBoard</span>
+    </a>
+    <label class="mobile-menu-toggle" for="nav-toggle" aria-label="Toggle navigation menu">
+        <i class="bi bi-list" aria-hidden="true"></i>
+    </label>
+</div>
+
+<input id="nav-toggle" type="checkbox" class="navbar-toggler" aria-label="Toggle navigation menu" @bind="isNavigationOpen" />
+
+<div class="nav-scrollable" @onclick="CloseNavigation">
+    <nav class="nav flex-column" aria-label="Main navigation">
+        <div class="nav-section-label">Workspace</div>
+        <div class="nav-item">
+            <NavLink class="nav-link"
+                     href=""
+                     Match="NavLinkMatch.All">
+                <i class="bi bi-house-door" aria-hidden="true"></i>
+                <span>Home</span>
+            </NavLink>
+        </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item">
+                    <NavLink class="nav-link"
+                             href="workspaces">
+                        <i class="bi bi-grid" aria-hidden="true"></i>
+                        <span>Workspaces</span>
+                    </NavLink>
+                </div>
+                <div class="nav-section-label mt-4">Account</div>
+                <div class="nav-item">
+                    <NavLink class="nav-link"
+                             href="profile">
+                        <i class="bi bi-person-circle" aria-hidden="true"></i>
+                        <span>Profile</span>
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <button class="nav-link nav-logout"
+                            @onclick="LogoutAsync">
+                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                        <span>Log out</span>
+                    </button>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                <div class="nav-section-label mt-4">Account</div>
+                <div class="nav-item">
+                    <NavLink class="nav-link"
+                             href="login">
+                        <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
+                        <span>Log in</span>
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link"
+                             href="register">
+                        <i class="bi bi-person-plus" aria-hidden="true"></i>
+                        <span>Create account</span>
+                    </NavLink>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </nav>
+</div>
+
+@code {
+
+    private bool isNavigationOpen;
+
+    protected override void OnInitialized()
+    {
+        Console.WriteLine(
+            "========== NAV MENU INITIALIZED ==========");
+    }
+
+    private void CloseNavigation()
+    {
+        isNavigationOpen = false;
+    }
+
+    private async Task LogoutAsync()
+    {
+        Console.WriteLine(
+            "========== NAV MENU LOGOUT CLICKED ==========");
+
+        await AuthenticationService.LogoutAsync();
+
+        Console.WriteLine(
+            "NAV MENU: Logout completed.");
+
+        Navigation.NavigateTo(
+            "/login");
+    }
+}

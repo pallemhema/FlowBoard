@@ -1,0 +1,97 @@
+@page "/workspaces/create"
+
+@using FlowBoard.Shared.DTOs.Workspaces
+@using FlowBoard.Web.Models.Workspaces
+
+@inject IWorkspaceApiService WorkspaceApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Create Workspace</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Create Workspace</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Workspaces</p>
+            <h1 class="page-title">Create workspace</h1>
+            <p class="page-subtitle">
+                Create a new workspace for your projects and boards.
+            </p>
+        </div>
+    </header>
+
+    <div class="form-surface">
+        <WorkspaceForm
+            Model="@model"
+            IsSubmitting="@isCreating"
+            SubmitText="Create workspace"
+            ErrorMessage="@errorMessage"
+            OnSubmit="@CreateAsync"
+            OnCancel="@Cancel" />
+    </div>
+
+</div>
+
+@code {
+
+    private WorkspaceFormModel model = new();
+
+    private bool isCreating;
+
+    private string? errorMessage;
+
+    private async Task CreateAsync(
+        WorkspaceFormModel form)
+    {
+        if (isCreating)
+        {
+            return;
+        }
+
+        isCreating = true;
+        errorMessage = null;
+
+        try
+        {
+            // UI model → API request DTO
+            var request =
+                new CreateWorkspaceRequest
+                {
+                    Name = form.Name,
+                    Description = form.Description
+                };
+
+            var workspace =
+                await WorkspaceApiService.CreateAsync(
+                    request);
+
+            if (workspace is null)
+            {
+                errorMessage = "Unable to create the workspace. Please try again.";
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{workspace.Id}");
+        }
+            catch
+            {
+                errorMessage = "Unable to create the workspace. Please try again.";
+            }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            "/workspaces");
+    }
+}

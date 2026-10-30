@@ -1,0 +1,136 @@
+@using FlowBoard.Web.Models.BoardMembers
+@using FlowBoard.Shared.Enums
+@using FlowBoard.Shared.DTOs.Auth
+
+<EditForm Model="@Model"
+          OnValidSubmit="@HandleSubmit">
+
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+
+        <label class="form-label" for="member-user">
+            @(AvailableUsers is null ? "User ID" : "User")
+        </label>
+
+        @if (AvailableUsers is not null)
+        {
+            <InputSelect id="member-user"
+                         @bind-Value="Model.UserId"
+                         class="form-select">
+                <option value="">Select a user</option>
+                @if (AvailableUsers.Count == 0)
+                {
+                    <option disabled>No available users found</option>
+                }
+                @foreach (var user in AvailableUsers)
+                {
+                    <option value="@user.UserId">
+                        @($"{user.FirstName} {user.LastName} ({user.Email})")
+                    </option>
+                }
+            </InputSelect>
+        }
+        else
+        {
+            <InputText id="member-user"
+                       @bind-Value="Model.UserId"
+                       class="form-control"
+                       placeholder="Enter user ID" />
+        }
+
+        <ValidationMessage For="@(() => Model.UserId)" />
+
+    </div>
+
+    <div class="mb-3">
+
+        <label class="form-label">
+            Role
+        </label>
+
+        <InputSelect @bind-Value="Model.Role"
+                     class="form-select">
+
+            <option value="@BoardMemberRole.Viewer">
+                Viewer
+            </option>
+
+            <option value="@BoardMemberRole.Editor">
+                Editor
+            </option>
+
+        </InputSelect>
+
+        <ValidationMessage For="@(() => Model.Role)" />
+
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@ErrorMessage</div>
+    }
+
+    <div class="d-flex gap-2">
+
+        <button type="submit"
+                class="btn btn-primary"
+                disabled="@IsSubmitting">
+
+            @if (IsSubmitting)
+            {
+                <span>Adding...</span>
+            }
+            else
+            {
+                <span>@SubmitText</span>
+            }
+
+        </button>
+
+        <button type="button"
+                class="btn btn-secondary"
+                @onclick="Cancel"
+                disabled="@IsSubmitting">
+
+            Cancel
+
+        </button>
+
+    </div>
+
+</EditForm>
+
+@code {
+
+    [Parameter]
+    public BoardMemberFormModel Model { get; set; } = new();
+
+    [Parameter]
+    public IReadOnlyList<UserDirectoryResponse>? AvailableUsers { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardMemberFormModel> OnSubmit { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public bool IsSubmitting { get; set; }
+
+    [Parameter]
+    public string SubmitText { get; set; } = "Add Member";
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    private async Task HandleSubmit()
+    {
+        await OnSubmit.InvokeAsync(Model);
+    }
+
+    private async Task Cancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+}

@@ -1,0 +1,190 @@
+
+@page "/workspaces"
+
+
+@inject IWorkspaceApiService WorkspaceApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Workspaces</PageTitle>
+
+<div class="page-shell">
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Your organization</p>
+            <h1 class="page-title">Workspaces</h1>
+            <p class="page-subtitle">A home for your teams, boards, and projects.</p>
+        </div>
+        <button class="btn btn-primary"
+                @onclick="OpenCreate">
+            <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
+            New workspace
+        </button>
+    </header>
+
+    <div class="search-wrap mb-4">
+
+        <SearchBox
+            @bind-Value="search"
+            @bind-Value:after="SearchChangedAsync"
+            Placeholder="Search workspaces..." />
+
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            Loading workspaces...
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+    else if (workspaces.Count == 0)
+    {
+        <EmptyState
+            Title="@(string.IsNullOrWhiteSpace(search) ? "No workspaces yet" : "No workspaces match your search")"
+            Message="@(string.IsNullOrWhiteSpace(search) ? "Create a workspace to get started." : "Clear the search to see all workspaces.")" />
+    }
+    else
+    {
+        <div class="entity-grid">
+
+            @foreach (var workspace in workspaces)
+            {
+                <WorkspaceCard
+                    Workspace="workspace"
+                    OnOpen="OpenWorkspace" />
+            }
+
+        </div>
+
+        <Pagination
+            CurrentPage="page"
+            TotalPages="totalPages"
+            TotalCount="totalCount"
+            PageChanged="LoadPageAsync" />
+    }
+
+</div>
+
+@code {
+
+    private List<WorkspaceResponse> workspaces = [];
+
+    private string? search;
+
+    private int page = 1;
+
+    private const int PageSize = 10;
+
+    private int totalPages;
+
+    private int totalCount;
+
+    private bool isLoading;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPageAsync(1);
+    }
+
+    private async Task LoadPageAsync(
+        int requestedPage)
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            page = requestedPage;
+
+            var request = new PagedSearchRequest
+            {
+                Page = page,
+                PageSize = PageSize,
+                Search = search
+            };
+
+            var result =
+                await WorkspaceApiService.GetAsync(
+                    request);
+
+            if (result is null)
+            {
+                workspaces = [];
+                totalPages = 0;
+                totalCount = 0;
+                errorMessage = "Unable to load workspaces. Please try again.";
+
+                return;
+            }
+
+            workspaces =
+                result.Items.ToList();
+
+            totalPages =
+                result.TotalPages;
+
+            totalCount = result.TotalCount;
+        }
+        catch
+        {
+            workspaces = [];
+            totalPages = 0;
+            totalCount = 0;
+            errorMessage = "Unable to load workspaces. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SearchChangedAsync()
+    {
+        page = 1;
+
+        await LoadPageAsync(1);
+    }
+
+    private void OpenCreate()
+    {
+        Navigation.NavigateTo(
+            "/workspaces/create");
+    }
+
+    private void OpenWorkspace(
+        WorkspaceResponse workspace)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{workspace.Id}");
+    }
+
+    private void EditWorkspace(
+        WorkspaceResponse workspace)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{workspace.Id}/edit");
+    }
+
+    private async Task DeleteWorkspace(
+        WorkspaceResponse workspace)
+    {
+        var deleted =
+            await WorkspaceApiService.DeleteAsync(
+                workspace.Id);
+
+        if (!deleted)
+        {
+            return;
+        }
+
+        workspaces.Remove(workspace);
+
+        StateHasChanged();
+    }
+
+}

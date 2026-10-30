@@ -1,0 +1,147 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/columns/{ColumnId:guid}/edit"
+
+@using FlowBoard.Shared.DTOs.BoardColumns
+
+@inject IBoardColumnApiService BoardColumnApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Edit Column</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Edit Column</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Board settings</p>
+            <h1 class="page-title">Edit column</h1>
+        </div>
+    </header>
+
+    @if (isLoading)
+    {
+        <p>Loading column...</p>
+    }
+    else if (model is null)
+    {
+        <EmptyState
+            Title="Unable to load column"
+            Message="@(errorMessage ?? "The column could not be found.")" />
+    }
+    else
+    {
+        <div class="form-surface">
+            <BoardColumnForm
+                Model="@model"
+                OnSubmit="UpdateAsync"
+                OnCancel="Cancel"
+                IsSubmitting="@isSubmitting"
+                ErrorMessage="@errorMessage"
+                SubmitText="Save changes" />
+        </div>
+    }
+
+</div>
+
+@code {
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    [Parameter]
+    public Guid ColumnId { get; set; }
+
+    private BoardColumnFormModel? model;
+
+    private bool isLoading = true;
+
+    private bool isSubmitting;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var column =
+                await BoardColumnApiService.GetAsync(
+                    BoardId,
+                    ColumnId);
+
+            if (column is not null)
+            {
+                model = new BoardColumnFormModel
+                {
+                    Name = column.Name
+                };
+            }
+            else
+            {
+                errorMessage = "The column could not be found.";
+            }
+        }
+        catch
+        {
+            errorMessage = "Unable to load the column. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task UpdateAsync(
+        BoardColumnFormModel form)
+    {
+        if (isSubmitting)
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new UpdateBoardColumnRequest
+            {
+                Name = form.Name
+            };
+
+            var success =
+                await BoardColumnApiService.UpdateAsync(
+                    BoardId,
+                    ColumnId,
+                    request);
+
+            if (!success)
+            {
+                errorMessage = "Unable to update the column. Please try again.";
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{WorkspaceId}/boards/{BoardId}");
+        }
+            catch
+            {
+                errorMessage = "Unable to update the column. Please try again.";
+            }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}");
+    }
+}

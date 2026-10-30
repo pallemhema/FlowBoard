@@ -1,0 +1,11 @@
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/bin/Debug/net8.0/FlowBoard.Shared.deps.json
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/bin/Debug/net8.0/FlowBoard.Shared.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/bin/Debug/net8.0/FlowBoard.Shared.pdb
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.GeneratedMSBuildEditorConfig.editorconfig
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.AssemblyInfoInputs.cache
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.AssemblyInfo.cs
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.csproj.CoreCompileInputs.cache
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/refint/FlowBoard.Shared.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.pdb
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/ref/FlowBoard.Shared.dll

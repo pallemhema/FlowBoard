@@ -1,0 +1,150 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/edit"
+
+@inject IBoardApiService BoardApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Edit Board</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Board settings</p>
+            <h1 class="page-title">Edit board</h1>
+            <p class="page-subtitle">Update the board details.</p>
+        </div>
+    </header>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            Loading board...
+        </div>
+    }
+    else if (boardNotFound)
+    {
+        <EmptyState
+            Title="Board not found"
+            Message="The board could not be found." />
+
+        <div class="mt-3">
+            <button class="btn btn-secondary"
+                    @onclick="Cancel">
+                Back
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="form-surface">
+            <BoardForm
+                Model="@model"
+                OnSubmit="@UpdateAsync"
+                OnCancel="@Cancel"
+                IsLoading="@isSaving"
+                SubmitText="Save changes"
+                LoadingText="Saving..."
+                ErrorMessage="@errorMessage" />
+        </div>
+    }
+
+</div>
+
+@code {
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    private BoardFormModel model = new();
+
+    private bool isLoading;
+
+    private bool isSaving;
+
+    private bool boardNotFound;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            var board =
+                await BoardApiService.GetByIdAsync(
+                    BoardId);
+
+            if (board is null)
+            {
+                boardNotFound = true;
+                return;
+            }
+
+            model = new BoardFormModel
+            {
+                Name = board.Name,
+                Description = board.Description
+            };
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task UpdateAsync()
+    {
+        isSaving = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new UpdateBoardRequest
+            {
+                Name = model.Name,
+                Description = model.Description
+            };
+
+            var success =
+                await BoardApiService.UpdateAsync(
+                    BoardId,
+                    request);
+
+            if (!success)
+            {
+                errorMessage =
+                    "Unable to update the board.";
+
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{WorkspaceId}/boards/{BoardId}");
+        }
+        catch
+        {
+            errorMessage = "Unable to update the board. Please try again.";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}");
+    }
+}

@@ -1,0 +1,200 @@
+@* @page "/login"
+
+
+@inject IAuthenticationService AuthenticationService
+@inject NavigationManager Navigation
+
+<PageTitle>Login</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-panel">
+        <span class="brand-mark auth-brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+        <p class="section-label mt-4 mb-2">Welcome back</p>
+        <h1 class="page-title mb-2">Log in to FlowBoard</h1>
+        <p class="page-subtitle mb-4">Pick up where your team left off.</p>
+
+        <EditForm Model="@model"
+              OnValidSubmit="@LoginAsync"
+              FormName="Login">
+
+        <DataAnnotationsValidator />
+
+        <div>
+            <label>Email</label>
+
+            <InputText
+                @bind-Value="model.Email"
+                class="form-control" />
+
+            <ValidationMessage
+                For="@(() => model.Email)" />
+        </div>
+
+        <div>
+            <label>Password</label>
+
+            <InputText
+                @bind-Value="model.Password"
+                type="password"
+                class="form-control" />
+
+            <ValidationMessage
+                For="@(() => model.Password)" />
+        </div>
+
+        <button type="submit">
+            Login
+        </button>
+
+    </EditForm>
+
+</div>
+
+@code {
+
+    private LoginRequest model = new();
+
+    private bool _isLoggingIn;
+
+    private async Task LoginAsync()
+    {
+        if (_isLoggingIn)
+        {
+            Console.WriteLine(
+                "LOGIN PAGE: Login already in progress. Ignoring duplicate submit.");
+
+            return;
+        }
+
+        _isLoggingIn = true;
+
+        try
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                "========== LOGIN PAGE: SUBMIT ==========");
+
+            Console.WriteLine(
+                $"LOGIN PAGE: Email = {model.Email}");
+
+            Console.WriteLine(
+                "LOGIN PAGE: Calling AuthenticationService.LoginAsync()");
+
+            var success =
+                await AuthenticationService.LoginAsync(model);
+
+            Console.WriteLine(
+                $"LOGIN PAGE: Login result = {success}");
+
+            if (!success)
+            {
+                Console.WriteLine(
+                    "LOGIN PAGE: Login failed.");
+
+                return;
+            }
+
+            Console.WriteLine(
+                "LOGIN PAGE: Login successful.");
+
+            Console.WriteLine(
+                "LOGIN PAGE: Navigating to /");
+
+            Navigation.NavigateTo("/");
+        }
+        finally
+        {
+            _isLoggingIn = false;
+        }
+    }
+} *@
+@page "/login"
+
+@using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Web.Services.Authentication
+
+@inject IAuthenticationService AuthenticationService
+@inject NavigationManager Navigation
+
+<PageTitle>Login</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-panel">
+        <span class="brand-mark auth-brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+        <p class="section-label mt-4 mb-2">Welcome back</p>
+        <h1 class="page-title mb-2">Log in to FlowBoard</h1>
+        <p class="page-subtitle mb-4">Pick up where your team left off.</p>
+
+    <EditForm Model="@model"
+              OnValidSubmit="@LoginAsync"
+              FormName="Login">
+
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+            <label class="form-label" for="login-email">Email</label>
+
+            <InputText id="login-email" @bind-Value="model.Email"
+                       class="form-control" />
+
+            <ValidationMessage For="@(() => model.Email)" />
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label" for="login-password">Password</label>
+
+            <InputText id="login-password" @bind-Value="model.Password"
+                       type="password"
+                       class="form-control" />
+
+            <ValidationMessage For="@(() => model.Password)" />
+        </div>
+
+        <button class="btn btn-primary w-100"
+                type="submit"
+                disabled="@isSubmitting">
+
+            @(isSubmitting ? "Logging in..." : "Log in")
+
+        </button>
+
+        </EditForm>
+        <p class="text-muted text-center small mt-4 mb-0">
+            New to FlowBoard? <NavLink href="/register">Create an account</NavLink>
+        </p>
+    </section>
+</div>
+
+@code {
+
+    private readonly LoginRequest model = new();
+
+    private bool isSubmitting;
+
+    private async Task LoginAsync()
+    {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            var success =
+                await AuthenticationService.LoginAsync(model);
+
+            if (!success)
+            {
+                return;
+            }
+
+            Navigation.NavigateTo("/");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

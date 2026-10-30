@@ -1,0 +1,163 @@
+@page "/workspaces/{Id:guid}/edit"
+
+@using FlowBoard.Shared.DTOs.Workspaces
+@using FlowBoard.Web.Models.Workspaces
+
+@inject IWorkspaceApiService WorkspaceApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Edit Workspace</PageTitle>
+
+<div class="page-shell">
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            Loading workspace...
+        </div>
+    }
+    else if (workspace is null)
+    {
+        <EmptyState
+            Title="Workspace not found"
+            Message="The workspace could not be found." />
+
+        <div class="mt-3">
+
+            <button class="btn btn-secondary"
+                    @onclick="Cancel">
+
+                Back to Workspaces
+
+            </button>
+
+        </div>
+    }
+    else
+    {
+        <Breadcrumbs>
+            <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+            <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{Id}")">@workspace.Name</NavLink></li>
+            <li class="breadcrumb-item active" aria-current="page">Edit</li>
+        </Breadcrumbs>
+
+        <header class="page-header">
+            <div>
+                <p class="section-label mb-2">Workspace settings</p>
+                <h1 class="page-title">Edit workspace</h1>
+                <p class="page-subtitle">
+                    Update your workspace information.
+                </p>
+            </div>
+        </header>
+
+        <div class="form-surface">
+            <WorkspaceForm
+                Model="@model"
+                IsSubmitting="@isUpdating"
+                SubmitText="Save changes"
+                ErrorMessage="@errorMessage"
+                OnSubmit="@UpdateAsync"
+                OnCancel="@Cancel" />
+        </div>
+    }
+
+</div>
+
+@code {
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private WorkspaceResponse? workspace;
+
+    private WorkspaceFormModel model = new();
+
+    private bool isLoading;
+
+    private bool isUpdating;
+
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadWorkspaceAsync();
+    }
+
+    private async Task LoadWorkspaceAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            workspace =
+                await WorkspaceApiService.GetByIdAsync(Id);
+
+            if (workspace is null)
+            {
+                return;
+            }
+
+            model = new WorkspaceFormModel
+            {
+                Name = workspace.Name,
+                Description = workspace.Description
+            };
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task UpdateAsync(
+        WorkspaceFormModel form)
+    {
+        if (isUpdating)
+        {
+            return;
+        }
+
+        isUpdating = true;
+        errorMessage = null;
+
+        try
+        {
+            // UI model → API request DTO
+            var request =
+                new UpdateWorkspaceRequest
+                {
+                    Name = form.Name,
+                    Description = form.Description
+                };
+
+            var workspace =
+                await WorkspaceApiService.UpdateAsync(
+                    Id,
+                    request);
+
+            if (workspace is null)
+            {
+                errorMessage = "Unable to update the workspace. Please try again.";
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{Id}");
+        }
+            catch
+            {
+                errorMessage = "Unable to update the workspace. Please try again.";
+            }
+        finally
+        {
+            isUpdating = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{Id}");
+    }
+}

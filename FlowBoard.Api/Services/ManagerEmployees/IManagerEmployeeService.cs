@@ -1,0 +1,33 @@
+using FlowBoard.Shared.DTOs.Common;
+using FlowBoard.Shared.DTOs.ManagerEmployees;
+
+namespace FlowBoard.Api.Services.ManagerEmployees;
+
+public interface IManagerEmployeeService
+{
+    Task<ManagerEmployeeResponse> AssignAsync(
+        Guid managerId,
+        AssignEmployeeToManagerRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<ManagerEmployeeResponse>> GetManagedEmployeesAsync(
+        PagedRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<ManagerEmployeeResponse>> GetMyManagersAsync(
+        PagedRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<ManagerEmployeeResponse>> GetAllAsync(
+        PagedRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task RemoveManagedEmployeeAsync(
+        Guid employeeId,
+        CancellationToken cancellationToken = default);
+
+    Task RemoveAsync(
+        Guid managerId,
+        Guid employeeId,
+        CancellationToken cancellationToken = default);
+}

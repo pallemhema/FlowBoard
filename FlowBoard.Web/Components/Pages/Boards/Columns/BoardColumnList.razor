@@ -1,0 +1,72 @@
+@using FlowBoard.Shared.DTOs.BoardColumns
+
+
+
+@if (Columns.Count == 0)
+{
+    <div class="empty-state py-5">
+
+        <div class="empty-state-icon mb-3">
+            <i class="bi bi-columns-gap" aria-hidden="true"></i>
+        </div>
+        <h5>No columns yet</h5>
+
+        <p class="text-muted mb-3">
+            Create a column to start organizing this board.
+        </p>
+
+        <button class="btn btn-primary"
+                @onclick="Create">
+
+            <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>Create column
+
+        </button>
+    </div>
+}
+else
+{
+    <div class="entity-grid">
+
+        @foreach (var column in Columns)
+        {
+            <BoardColumnCard
+                Column="column"
+                OnEdit="Edit"
+                OnDelete="Delete" />
+        }
+
+    </div>
+}
+
+@code {
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<BoardColumnResponse> Columns { get; set; }
+        = [];
+
+    [Parameter]
+    public EventCallback OnCreate { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardColumnResponse> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardColumnResponse> OnDelete { get; set; }
+
+    private async Task Create()
+    {
+        await OnCreate.InvokeAsync();
+    }
+
+    private async Task Edit(
+        BoardColumnResponse column)
+    {
+        await OnEdit.InvokeAsync(column);
+    }
+
+    private async Task Delete(
+        BoardColumnResponse column)
+    {
+        await OnDelete.InvokeAsync(column);
+    }
+}

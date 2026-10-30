@@ -1,0 +1,290 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/members/add"
+
+@using FlowBoard.Shared.DTOs.BoardMembers
+@using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Common
+@using FlowBoard.Web.Models.BoardMembers
+
+@inject IBoardMemberApiService BoardMemberApiService
+@inject IBoardApiService BoardApiService
+@inject IUserDirectoryApiService UserDirectoryApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Add Board Member</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}?section=members")">Members</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Add Member</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Board members</p>
+            <h1 class="page-title">Add member</h1>
+            <p class="page-subtitle">Invite a teammate and choose their access level.</p>
+        </div>
+    </header>
+
+    @if (isLoadingUsers)
+    {
+        <div class="text-muted mb-3" role="status">Loading users...</div>
+    }
+
+    @if (totalUserPages > 1)
+    {
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    disabled="@(isLoadingUsers || userPage == 1)"
+                    @onclick="() => ChangeUserPageAsync(userPage - 1)">
+                Previous users
+            </button>
+            <span class="small text-muted">Page @userPage of @totalUserPages</span>
+            <button type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    disabled="@(isLoadingUsers || userPage == totalUserPages)"
+                    @onclick="() => ChangeUserPageAsync(userPage + 1)">
+                Next users
+            </button>
+        </div>
+    }
+
+    <div class="form-surface">
+        <BoardMemberForm
+            Model="@model"
+            AvailableUsers="@availableUsers"
+            OnSubmit="AddAsync"
+            OnCancel="Cancel"
+            IsSubmitting="@isSubmitting"
+            ErrorMessage="@errorMessage"
+            SubmitText="Add member" />
+    </div>
+
+</div>
+
+@code {
+
+    // ============================================================
+    // ROUTE PARAMETERS
+    // ============================================================
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+
+    // ============================================================
+    // STATE
+    // ============================================================
+
+    private BoardMemberFormModel model = new();
+
+    private List<UserDirectoryResponse> availableUsers = [];
+
+    private HashSet<Guid> boardMemberIds = [];
+
+    private HashSet<Guid> eligibleUserIds = [];
+
+    private Guid? boardOwnerId;
+
+    private int userPage = 1;
+
+    private int totalUserPages = 1;
+
+    private bool isSubmitting;
+
+    private bool isLoadingUsers;
+
+    private bool isBoardMembersLoaded;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var board = await BoardApiService.GetByIdAsync(BoardId);
+            if (board is null)
+            {
+                errorMessage = "Unable to load this board.";
+                return;
+            }
+
+            boardOwnerId = board.OwnerId;
+
+            var request = new PagedSearchRequest
+            {
+                Page = 1,
+                PageSize = 100
+            };
+            var boardMembers = await BoardMemberApiService.GetAsync(
+                BoardId,
+                request);
+
+            if (boardMembers is null)
+            {
+                errorMessage = "Unable to load current board members.";
+                return;
+            }
+
+            boardMemberIds = boardMembers.Items
+                .Select(member => member.UserId)
+                .ToHashSet();
+
+            for (var page = 2; page <= boardMembers.TotalPages; page++)
+            {
+                request.Page = page;
+                var nextPage = await BoardMemberApiService.GetAsync(
+                    BoardId,
+                    request);
+
+                if (nextPage is null)
+                {
+                    errorMessage = "Unable to load current board members.";
+                    return;
+                }
+
+                boardMemberIds.UnionWith(
+                    nextPage.Items.Select(member => member.UserId));
+            }
+
+            isBoardMembersLoaded = true;
+            await LoadUsersAsync();
+        }
+        catch
+        {
+            errorMessage = "Unable to load current board members.";
+        }
+    }
+
+    private async Task ChangeUserPageAsync(int page)
+    {
+        if (page < 1 || page > totalUserPages || page == userPage)
+        {
+            return;
+        }
+
+        userPage = page;
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        isLoadingUsers = true;
+        errorMessage = null;
+
+        try
+        {
+            var result = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = userPage,
+                    PageSize = 100
+                });
+
+            if (result is null)
+            {
+                errorMessage = "Unable to load users. Please try again.";
+                availableUsers = [];
+                return;
+            }
+
+            totalUserPages = Math.Max(1, result.TotalPages);
+            availableUsers = result.Items
+                .Where(user =>
+                    user.UserId != boardOwnerId &&
+                    !boardMemberIds.Contains(user.UserId))
+                .ToList();
+            eligibleUserIds.UnionWith(
+                availableUsers.Select(user => user.UserId));
+        }
+        catch
+        {
+            errorMessage = "Unable to load users. Please try again.";
+            availableUsers = [];
+        }
+        finally
+        {
+            isLoadingUsers = false;
+        }
+    }
+
+
+    // ============================================================
+    // ADD MEMBER
+    // ============================================================
+
+    private async Task AddAsync(BoardMemberFormModel form)
+    {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        if (!isBoardMembersLoaded || isLoadingUsers)
+        {
+            errorMessage = "Wait for the user list to finish loading before adding a member.";
+            return;
+        }
+
+        if (!Guid.TryParse(form.UserId, out var userId) ||
+            !eligibleUserIds.Contains(userId) ||
+            userId == boardOwnerId ||
+            boardMemberIds.Contains(userId))
+        {
+            errorMessage = "Select a user from the available users.";
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new AddBoardMemberRequest
+            {
+                UserId = userId,
+                Role = form.Role
+            };
+
+            var result = await BoardMemberApiService.AddAsync(
+                BoardId,
+                request);
+
+            if (result is null)
+            {
+                errorMessage = "Unable to add this member. Please try again.";
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{WorkspaceId}/boards/{BoardId}?section=members");
+        }
+        catch
+        {
+            errorMessage = "Unable to add this member. Please try again.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    // ============================================================
+    // CANCEL
+    // ============================================================
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}?section=members");
+    }
+}

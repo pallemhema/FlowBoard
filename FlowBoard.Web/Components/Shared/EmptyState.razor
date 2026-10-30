@@ -1,0 +1,33 @@
+<div class="empty-state py-5">
+
+    <div class="empty-state-icon mb-3">
+        <i class="bi bi-inbox" aria-hidden="true"></i>
+    </div>
+    <h4>@Title</h4>
+
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <p class="text-muted">
+            @Message
+        </p>
+    }
+
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+
+</div>
+
+@code {
+
+    [Parameter]
+    public string Title { get; set; }
+        = "Nothing found.";
+
+    [Parameter]
+    public string? Message { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

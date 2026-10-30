@@ -1,0 +1,187 @@
+@page "/workspaces/{WorkspaceId:guid}/boards"
+@inject IBoardApiService BoardApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Boards</PageTitle>
+
+<div class="page-shell">
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Workspace boards</p>
+            <h1 class="page-title">Boards</h1>
+            <p class="page-subtitle">Browse and open the work organized in this workspace.</p>
+        </div>
+        <button class="btn btn-primary" @onclick="OpenCreate">
+            <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>New board
+        </button>
+    </header>
+
+    <div class="search-wrap mb-4">
+
+        <SearchBox
+            @bind-Value="search"
+            @bind-Value:after="SearchChangedAsync"
+            Placeholder="Search boards..." />
+
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            Loading boards...
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@errorMessage</div>
+    }
+    else if (boards.Count == 0)
+    {
+        <EmptyState
+            Title="@(string.IsNullOrWhiteSpace(search) ? "No boards yet" : "No boards match your search")"
+            Message="@(string.IsNullOrWhiteSpace(search) ? "Create a board to get started." : "Clear the search to see all boards.")" />
+    }
+    else
+    {
+        <div class="entity-grid">
+
+            @foreach (var board in boards)
+            {
+                <BoardCard
+                    Board="board"
+                    OnOpen="OpenBoard" />
+            }
+
+        </div>
+
+        <Pagination
+            CurrentPage="page"
+            TotalPages="totalPages"
+            TotalCount="totalCount"
+            PageChanged="LoadPageAsync" />
+    }
+
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid WorkspaceId { get; set; }
+
+    private List<BoardResponse> boards = [];
+
+    private string? search;
+
+    private int page = 1;
+
+    private const int PageSize = 10;
+
+    private int totalPages;
+
+    private int totalCount;
+
+    private bool isLoading;
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPageAsync(1);
+    }
+
+    private async Task SearchChangedAsync()
+    {
+        page = 1;
+
+        await LoadPageAsync(1);
+    }
+
+    private async Task LoadPageAsync(
+        int requestedPage)
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            page = requestedPage;
+
+            var request = new BoardQueryRequest
+            {
+                Page = page,
+                PageSize = PageSize,
+                Search = search,
+                WorkspaceId = WorkspaceId
+            };
+
+            var result = await BoardApiService.GetAsync(request);
+
+            
+
+            if (result is null)
+            {
+                boards = [];
+                totalPages = 0;
+                totalCount = 0;
+                errorMessage = "Unable to load boards. Please try again.";
+
+                return;
+            }
+
+            boards =
+                result.Items.ToList();
+
+            totalPages =
+                result.TotalPages;
+
+            totalCount = result.TotalCount;
+        }
+        catch
+        {
+            boards = [];
+            totalPages = 0;
+            totalCount = 0;
+            errorMessage = "Unable to load boards. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenCreate()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/create");
+    }
+
+    private void OpenBoard(
+        BoardResponse board)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{board.Id}");
+    }
+
+    private void EditBoard(
+        BoardResponse board)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{board.Id}/edit");
+    }
+
+    private async Task DeleteBoard(
+        BoardResponse board)
+    {
+        var deleted =
+            await BoardApiService.DeleteAsync(
+                board.Id);
+
+        if (!deleted)
+        {
+            return;
+        }
+
+        boards.Remove(board);
+
+        StateHasChanged();
+    }
+}

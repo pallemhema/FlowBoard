@@ -1,0 +1,191 @@
+is_global = true
+build_property.TargetFramework = net8.0
+build_property.TargetPlatformMinVersion = 
+build_property.UsingMicrosoftNETSdkWeb = true
+build_property.ProjectTypeGuids = 
+build_property.InvariantGlobalization = 
+build_property.PlatformNeutralAssembly = 
+build_property.EnforceExtendedAnalyzerRules = 
+build_property._SupportedPlatformList = Linux,macOS,Windows
+build_property.RootNamespace = FlowBoard.Web
+build_property.RootNamespace = FlowBoard.Web
+build_property.ProjectDir = /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.RazorLangVersion = 8.0
+build_property.SupportLocalizedComponentNames = 
+build_property.GenerateRazorMetadataSourceChecksumAttributes = 
+build_property.MSBuildProjectDirectory = /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web
+build_property._RazorSourceGeneratorDebug = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/App.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9BcHAucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Authentication/AuthenticationInitializer.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9BdXRoZW50aWNhdGlvbi9BdXRoZW50aWNhdGlvbkluaXRpYWxpemVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Auth/Home.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BdXRoL0hvbWUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Auth/Login.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BdXRoL0xvZ2luLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Auth/Profile.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BdXRoL1Byb2ZpbGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Auth/Register.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BdXRoL1JlZ2lzdGVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/BoardCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQm9hcmRDYXJkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/BoardCreate.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQm9hcmRDcmVhdGUucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/BoardDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQm9hcmREZXRhaWxzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/BoardEdit.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQm9hcmRFZGl0LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/BoardForm.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQm9hcmRGb3JtLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Boards.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQm9hcmRzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Columns/BoardColumnCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQ29sdW1ucy9Cb2FyZENvbHVtbkNhcmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Columns/BoardColumnCreate.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQ29sdW1ucy9Cb2FyZENvbHVtbkNyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Columns/BoardColumnDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQ29sdW1ucy9Cb2FyZENvbHVtbkRldGFpbHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Columns/BoardColumnEdit.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQ29sdW1ucy9Cb2FyZENvbHVtbkVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Columns/BoardColumnForm.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQ29sdW1ucy9Cb2FyZENvbHVtbkZvcm0ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Columns/BoardColumnList.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvQ29sdW1ucy9Cb2FyZENvbHVtbkxpc3QucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Members/AddMember.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvTWVtYmVycy9BZGRNZW1iZXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Members/BoardMemberCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvTWVtYmVycy9Cb2FyZE1lbWJlckNhcmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Members/BoardMemberForm.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvTWVtYmVycy9Cb2FyZE1lbWJlckZvcm0ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Members/BoardMemberList.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvTWVtYmVycy9Cb2FyZE1lbWJlckxpc3QucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Boards/Members/EditMember.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvTWVtYmVycy9FZGl0TWVtYmVyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Cards/CardCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9DYXJkcy9DYXJkQ2FyZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Cards/CardDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9DYXJkcy9DYXJkRGV0YWlscy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Cards/CardList.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9DYXJkcy9DYXJkTGlzdC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Cards/CreateCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9DYXJkcy9DcmVhdGVDYXJkLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Workspaces/WorkspaceCard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Xb3Jrc3BhY2VzL1dvcmtzcGFjZUNhcmQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Workspaces/WorkspaceCreate.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Xb3Jrc3BhY2VzL1dvcmtzcGFjZUNyZWF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Workspaces/WorkspaceDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Xb3Jrc3BhY2VzL1dvcmtzcGFjZURldGFpbHMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Workspaces/WorkspaceEdit.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Xb3Jrc3BhY2VzL1dvcmtzcGFjZUVkaXQucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Workspaces/WorkspaceForm.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Xb3Jrc3BhY2VzL1dvcmtzcGFjZUZvcm0ucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Workspaces/Workspaces.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Xb3Jrc3BhY2VzL1dvcmtzcGFjZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Routes.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9Sb3V0ZXMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/Breadcrumbs.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvQnJlYWRjcnVtYnMucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/EmptyState.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvRW1wdHlTdGF0ZS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/Pagination.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvUGFnaW5hdGlvbi5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/RedirectToLogin.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvUmVkaXJlY3RUb0xvZ2luLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/SearchBox.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvU2VhcmNoQm94LnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/Toast.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvVG9hc3QucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/_Imports.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9fSW1wb3J0cy5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Layout/MainLayout.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9MYXlvdXQvTWFpbkxheW91dC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = b-etnkymr8c1
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Layout/NavMenu.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9MYXlvdXQvTmF2TWVudS5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = b-dj5ulxzs1c

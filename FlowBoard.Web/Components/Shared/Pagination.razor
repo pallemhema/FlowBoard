@@ -1,0 +1,65 @@
+@if (TotalPages > 0)
+{
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+        @if (TotalCount.HasValue)
+        {
+            <span class="text-muted small">@TotalCount.Value items</span>
+        }
+        <nav aria-label="Pagination">
+        <ul class="pagination pagination-sm mb-0">
+            <li class="page-item @(CurrentPage <= 1 ? "disabled" : string.Empty)">
+                <button class="page-link"
+                        aria-label="Previous page"
+                        disabled="@(CurrentPage <= 1)"
+                        @onclick="Previous">
+                    Previous
+                </button>
+            </li>
+            <li class="page-item active" aria-current="page">
+                <span class="page-link">Page @CurrentPage of @TotalPages</span>
+            </li>
+            <li class="page-item @(CurrentPage >= TotalPages ? "disabled" : string.Empty)">
+                <button class="page-link"
+                        aria-label="Next page"
+                        disabled="@(CurrentPage >= TotalPages)"
+                        @onclick="Next">
+                    Next
+                </button>
+            </li>
+        </ul>
+        </nav>
+    </div>
+}
+
+@code {
+
+    [Parameter]
+    public int CurrentPage { get; set; }
+
+    [Parameter]
+    public int TotalPages { get; set; }
+
+    [Parameter]
+    public int? TotalCount { get; set; }
+
+    [Parameter]
+    public EventCallback<int> PageChanged { get; set; }
+
+    private async Task Previous()
+    {
+        if (CurrentPage <= 1)
+            return;
+
+        await PageChanged.InvokeAsync(
+            CurrentPage - 1);
+    }
+
+    private async Task Next()
+    {
+        if (CurrentPage >= TotalPages)
+            return;
+
+        await PageChanged.InvokeAsync(
+            CurrentPage + 1);
+    }
+}

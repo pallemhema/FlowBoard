@@ -1,0 +1,753 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}"
+
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.BoardColumns
+@using FlowBoard.Shared.DTOs.BoardMembers
+
+@inject IBoardApiService BoardApiService
+@inject IBoardColumnApiService BoardColumnApiService
+@inject IBoardMemberApiService BoardMemberApiService
+@inject NavigationManager Navigation
+
+<PageTitle>
+    @(board is null ? "Board" : board.Name)
+</PageTitle>
+
+<div class="page-shell">
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+
+            <p class="text-muted mt-3 mb-0">
+                Loading board...
+            </p>
+        </div>
+    }
+    else if (board is null)
+    {
+        <EmptyState
+            Title="Board not found"
+            Message="@(loadError ?? "The board you're looking for could not be found.")" />
+
+        <div class="text-center mt-3">
+            <button class="btn btn-outline-secondary"
+                    @onclick="BackToWorkspace">
+                Back to Workspace
+            </button>
+        </div>
+    }
+    else
+    {
+        <!-- Board Header -->
+
+        <header class="page-header">
+
+            <div>
+                <Breadcrumbs>
+                    <li class="breadcrumb-item">
+                        <NavLink href="/workspaces">Workspaces</NavLink>
+                    </li>
+                    <li class="breadcrumb-item">
+                        <NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink>
+                    </li>
+                    <li class="breadcrumb-item active" aria-current="page">
+                        @board.Name
+                    </li>
+                </Breadcrumbs>
+
+                <p class="section-label mb-2">Board</p>
+                <h1 class="page-title">
+                    @board.Name
+                </h1>
+
+                @if (!string.IsNullOrWhiteSpace(board.Description))
+                {
+                    <p class="page-subtitle">
+                        @board.Description
+                    </p>
+                }
+            </div>
+
+            @if (!isConfirmingBoardDelete)
+            {
+                <div class="d-flex flex-wrap gap-2 align-items-start">
+                    <button class="btn btn-outline-secondary"
+                            @onclick="EditBoard">
+                        <i class="bi bi-pencil me-2" aria-hidden="true"></i>Edit
+                    </button>
+                    <button class="btn btn-outline-danger"
+                            @onclick="RequestBoardDelete"
+                            disabled="@isDeletingBoard">
+                        <i class="bi bi-trash me-2" aria-hidden="true"></i>Delete
+                    </button>
+                </div>
+            }
+
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(operationError))
+        {
+            <div class="alert alert-danger" role="alert">
+                @operationError
+            </div>
+        }
+
+        @if (isConfirmingBoardDelete)
+        {
+            <div class="alert alert-warning d-flex flex-wrap align-items-center gap-2" role="group" aria-label="Confirm board deletion">
+                <span>Delete this board?</span>
+                <button class="btn btn-danger btn-sm" type="button" @onclick="DeleteBoardAsync" disabled="@isDeletingBoard">
+                    @(isDeletingBoard ? "Deleting..." : "Delete board")
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" @onclick="CancelBoardDelete" disabled="@isDeletingBoard">
+                    Cancel
+                </button>
+            </div>
+        }
+
+        <!-- Tabs -->
+
+        <div class="mb-4">
+            <nav class="nav nav-tabs" aria-label="Board sections">
+                <button class="nav-link @(activeSection == BoardSection.Columns ? "active" : null)"
+                        aria-current="@(activeSection == BoardSection.Columns ? "page" : null)"
+                        @onclick="ShowColumns">
+                    <i class="bi bi-columns-gap me-2" aria-hidden="true"></i>Columns
+                </button>
+                <button class="nav-link @(activeSection == BoardSection.Members ? "active" : null)"
+                        aria-current="@(activeSection == BoardSection.Members ? "page" : null)"
+                        @onclick="ShowMembers">
+                    <i class="bi bi-people me-2" aria-hidden="true"></i>Members
+                </button>
+            </nav>
+        </div>
+
+        <!-- Columns -->
+
+        @if (activeSection == BoardSection.Columns)
+        {
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+
+                <div>
+                    <h2 class="section-heading mb-1">Columns</h2>
+
+                    <p class="text-muted mb-0">
+                        Organize tasks into columns.
+                    </p>
+                </div>
+
+                <button class="btn btn-primary"
+                        @onclick="OpenCreateColumn">
+                    <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>New column
+                </button>
+
+            </div>
+
+            <!-- Column Search -->
+
+            <div class="search-wrap mb-4">
+                <SearchBox
+                    @bind-Value="columnSearch"
+                    @bind-Value:after="OnColumnSearchChanged"
+                    Placeholder="Search columns..." />
+            </div>
+
+            @if (isLoadingColumns)
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm"
+                         role="status">
+                    </div>
+
+                    <span class="ms-2">
+                        Loading columns...
+                    </span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(columnError))
+            {
+                <div class="alert alert-danger" role="alert">@columnError</div>
+            }
+            else if (FilteredColumns.Count == 0)
+            {
+                <EmptyState
+                    Title="@(string.IsNullOrWhiteSpace(columnSearch) ? "No columns yet" : "No columns match your search")"
+                    Message="@(string.IsNullOrWhiteSpace(columnSearch) ? "Create a column to organize this board." : "Clear the search to see all columns.")" />
+
+                @if (string.IsNullOrWhiteSpace(columnSearch))
+                {
+                    <p class="text-muted text-center mt-3">Use New column to add the first step to this board.</p>
+                }
+            }
+            else
+            {
+                <CascadingValue Name="WorkspaceId" Value="WorkspaceId">
+                    <CascadingValue Name="BoardId" Value="BoardId">
+                        <BoardColumnList
+                            Columns="@PagedColumns"
+                            OnCreate="@OpenCreateColumn"
+                            OnEdit="@EditColumn"
+                            OnDelete="@DeleteColumn" />
+                    </CascadingValue>
+                </CascadingValue>
+
+                @if (TotalColumnPages > 1)
+                {
+                    <Pagination
+                        CurrentPage="columnPage"
+                        TotalPages="TotalColumnPages"
+                        TotalCount="FilteredColumns.Count"
+                        PageChanged="ChangeColumnPageAsync" />
+                }
+            }
+        }
+
+        <!-- Members -->
+
+        else if (activeSection == BoardSection.Members)
+        {
+            <div class="d-flex justify-content-between align-items-center gap-3 mb-3">
+
+                <div>
+                    <h2 class="section-heading mb-1">Members</h2>
+
+                    <p class="text-muted mb-0">
+                        Manage members and their roles on this board.
+                    </p>
+                </div>
+
+                <button class="btn btn-primary"
+                        @onclick="OpenAddMember">
+                    <i class="bi bi-person-plus me-2" aria-hidden="true"></i>Add member
+                </button>
+
+            </div>
+
+            <!-- Member Search -->
+
+            <div class="search-wrap mb-4">
+                <SearchBox
+                    @bind-Value="memberSearch"
+                    @bind-Value:after="OnMemberSearchChanged"
+                    Placeholder="Search members..." />
+            </div>
+
+            @if (isLoadingMembers)
+            {
+                <div class="text-center py-4">
+                    <div class="spinner-border spinner-border-sm"
+                         role="status">
+                    </div>
+
+                    <span class="ms-2">
+                        Loading members...
+                    </span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(memberError))
+            {
+                <div class="alert alert-danger" role="alert">@memberError</div>
+            }
+            else if (members.Count == 0)
+            {
+                <EmptyState
+                    Title="@(string.IsNullOrWhiteSpace(memberSearch) ? "No members assigned" : "No members match your search")"
+                    Message="@(string.IsNullOrWhiteSpace(memberSearch) ? "Add a member to collaborate on this board." : "Clear the search to see all members.")" />
+            }
+            else
+            {
+                <BoardMemberList
+                    Members="@members"
+                    OnEditRole="@EditMemberRole"
+                    OnRemove="@RemoveMember" />
+
+                @if (memberTotalPages > 1)
+                {
+                    <Pagination
+                        CurrentPage="memberPage"
+                        TotalPages="memberTotalPages"
+                        TotalCount="memberTotalCount"
+                        PageChanged="ChangeMemberPageAsync" />
+                }
+            }
+        }
+    }
+
+</div>
+
+@code {
+
+    // ============================================================
+    // ROUTE PARAMETERS
+    // ============================================================
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "section")]
+    public string? Section { get; set; }
+
+
+    // ============================================================
+    // STATE
+    // ============================================================
+
+    private BoardResponse? board;
+
+    private List<BoardColumnResponse> columns = [];
+
+    private List<BoardMemberResponse> members = [];
+
+    private bool isLoading;
+    private bool isLoadingColumns;
+    private bool isLoadingMembers;
+
+    private string? operationError;
+
+    private string? loadError;
+
+    private string? columnError;
+
+    private string? memberError;
+
+    private bool isConfirmingBoardDelete;
+
+    private bool isDeletingBoard;
+
+    private string? columnSearch;
+    private string? memberSearch;
+
+    private int columnPage = 1;
+    private int memberPage = 1;
+
+    private int memberTotalPages;
+
+    private int memberTotalCount;
+
+    private const int PageSize = 10;
+
+    private BoardSection activeSection = BoardSection.Columns;
+
+    private enum BoardSection
+    {
+        Columns,
+        Members
+    }
+
+
+    // ============================================================
+    // FILTERED COLUMNS
+    // ============================================================
+
+    private List<BoardColumnResponse> FilteredColumns =>
+        columns
+            .Where(c =>
+                string.IsNullOrWhiteSpace(columnSearch) ||
+                c.Name.Contains(
+                    columnSearch,
+                    StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private int TotalColumnPages =>
+        Math.Max(
+            1,
+            (int)Math.Ceiling(
+                FilteredColumns.Count / (double)PageSize));
+
+    private List<BoardColumnResponse> PagedColumns =>
+        FilteredColumns
+            .Skip((columnPage - 1) * PageSize)
+            .Take(PageSize)
+            .ToList();
+
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+
+    protected override async Task OnParametersSetAsync()
+    {
+        activeSection = string.Equals(Section, "members", StringComparison.OrdinalIgnoreCase)
+            ? BoardSection.Members
+            : BoardSection.Columns;
+
+        await LoadAsync();
+    }
+
+
+    // ============================================================
+    // LOAD BOARD
+    // ============================================================
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            var loadedBoard =
+                await BoardApiService.GetByIdAsync(BoardId);
+
+            if (loadedBoard is null)
+            {
+                board = null;
+                columns = [];
+                members = [];
+                return;
+            }
+
+            if (loadedBoard.WorkspaceId == Guid.Empty)
+            {
+                // The detail response may omit WorkspaceId; the filtered list verifies its association.
+                var belongsToWorkspace =
+                    await IsBoardInWorkspaceAsync(BoardId);
+
+                if (belongsToWorkspace is null)
+                {
+                    board = null;
+                    columns = [];
+                    members = [];
+                    loadError =
+                        "Unable to verify this board's workspace. Please try again.";
+                    return;
+                }
+
+                if (!belongsToWorkspace.Value)
+                {
+                    board = null;
+                    columns = [];
+                    members = [];
+                    return;
+                }
+            }
+            else if (loadedBoard.WorkspaceId != WorkspaceId)
+            {
+                board = null;
+                columns = [];
+                members = [];
+                return;
+            }
+
+            board = loadedBoard;
+            columnPage = 1;
+            memberPage = 1;
+
+            await LoadColumnsAsync();
+            await LoadMembersAsync();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<bool?> IsBoardInWorkspaceAsync(Guid boardId)
+    {
+        var requestedPage = 1;
+        var totalPages = 1;
+
+        while (requestedPage <= totalPages)
+        {
+            var result = await BoardApiService.GetAsync(
+                new BoardQueryRequest
+                {
+                    Page = requestedPage,
+                    PageSize = PageSize,
+                    WorkspaceId = WorkspaceId
+                });
+
+            if (result is null)
+            {
+                return null;
+            }
+
+            if (result.Items.Any(item => item.Id == boardId))
+            {
+                return true;
+            }
+
+            totalPages = result.TotalPages;
+            requestedPage++;
+        }
+
+        return false;
+    }
+
+
+    // ============================================================
+    // COLUMNS
+    // ============================================================
+
+    private async Task LoadColumnsAsync()
+    {
+        isLoadingColumns = true;
+        columnError = null;
+
+        try
+        {
+            var result =
+                await BoardColumnApiService.GetAllAsync(BoardId);
+
+            if (result is null)
+            {
+                columns = [];
+                columnError = "Unable to load columns. Please try again.";
+                return;
+            }
+
+            columns = result.OrderBy(c => c.Position).ToList();
+
+            if (columnPage > TotalColumnPages)
+            {
+                columnPage = TotalColumnPages;
+            }
+        }
+        catch
+        {
+            columns = [];
+            columnError = "Unable to load columns. Please try again.";
+        }
+        finally
+        {
+            isLoadingColumns = false;
+        }
+    }
+
+    private void OnColumnSearchChanged()
+    {
+        columnPage = 1;
+    }
+
+    private Task ChangeColumnPageAsync(int requestedPage)
+    {
+        columnPage = requestedPage;
+        return Task.CompletedTask;
+    }
+
+
+    // ============================================================
+    // MEMBERS
+    // ============================================================
+
+    private async Task LoadMembersAsync()
+    {
+        isLoadingMembers = true;
+        memberError = null;
+
+        try
+        {
+            var request = new PagedSearchRequest
+            {
+                Page = memberPage,
+                PageSize = PageSize,
+                Search = memberSearch
+            };
+
+            var result =
+                await BoardMemberApiService.GetAsync(
+                    BoardId,
+                    request);
+
+            if (result is null)
+            {
+                members = [];
+                memberTotalPages = 0;
+                memberTotalCount = 0;
+                memberError = "Unable to load members. Please try again.";
+                return;
+            }
+
+            members = result.Items.ToList();
+
+            memberTotalPages = result.TotalPages;
+            memberTotalCount = result.TotalCount;
+
+            if (memberTotalPages > 0 && memberPage > memberTotalPages)
+            {
+                memberPage = memberTotalPages;
+            }
+        }
+        catch
+        {
+            members = [];
+            memberTotalPages = 0;
+            memberTotalCount = 0;
+            memberError = "Unable to load members. Please try again.";
+        }
+        finally
+        {
+            isLoadingMembers = false;
+        }
+    }
+
+    private async Task OnMemberSearchChanged()
+    {
+        memberPage = 1;
+        await LoadMembersAsync();
+    }
+
+    private async Task ChangeMemberPageAsync(int requestedPage)
+    {
+        memberPage = requestedPage;
+        await LoadMembersAsync();
+    }
+
+
+    // ============================================================
+    // TAB NAVIGATION
+    // ============================================================
+
+    private void ShowColumns()
+    {
+        activeSection = BoardSection.Columns;
+    }
+
+    private void ShowMembers()
+    {
+        activeSection = BoardSection.Members;
+    }
+
+
+    // ============================================================
+    // BOARD ACTIONS
+    // ============================================================
+
+    private void EditBoard()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}/edit");
+    }
+
+    private void RequestBoardDelete()
+    {
+        operationError = null;
+        isConfirmingBoardDelete = true;
+    }
+
+    private void CancelBoardDelete()
+    {
+        isConfirmingBoardDelete = false;
+    }
+
+    private async Task DeleteBoardAsync()
+    {
+        isDeletingBoard = true;
+        operationError = null;
+
+        try
+        {
+            var deleted = await BoardApiService.DeleteAsync(BoardId);
+            if (!deleted)
+            {
+                operationError = "Unable to delete the board. Please try again.";
+                return;
+            }
+
+            BackToWorkspace();
+        }
+        catch
+        {
+            operationError = "Unable to delete the board. Please try again.";
+        }
+        finally
+        {
+            isDeletingBoard = false;
+        }
+    }
+
+    private void BackToWorkspace()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}");
+    }
+
+
+    // ============================================================
+    // COLUMN ACTIONS
+    // ============================================================
+
+    private void OpenCreateColumn()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}/columns/create");
+    }
+
+    private void EditColumn(BoardColumnResponse column)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}/columns/{column.Id}/edit");
+    }
+
+    private async Task DeleteColumn(BoardColumnResponse column)
+    {
+        operationError = null;
+
+        try
+        {
+            var deleted =
+                await BoardColumnApiService.DeleteAsync(
+                    BoardId,
+                    column.Id);
+
+            if (!deleted)
+            {
+                operationError = "Unable to delete the column. Please try again.";
+                return;
+            }
+
+            columns.Remove(column);
+
+            if (columnPage > TotalColumnPages)
+            {
+                columnPage = TotalColumnPages;
+            }
+        }
+        catch
+        {
+            operationError = "Unable to delete the column. Please try again.";
+        }
+    }
+
+
+    // ============================================================
+    // MEMBER ACTIONS
+    // ============================================================
+
+    private void OpenAddMember()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}/members/add");
+    }
+
+    private void EditMemberRole(BoardMemberResponse member)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}/members/{member.UserId}/edit");
+    }
+
+    private async Task RemoveMember(BoardMemberResponse member)
+    {
+        var removed =
+            await BoardMemberApiService.DeleteAsync(
+                BoardId,
+                member.UserId);
+
+        if (!removed)
+        {
+            return;
+        }
+
+        members.Remove(member);
+
+        // Reload the current page so pagination remains accurate.
+        await LoadMembersAsync();
+    }
+}

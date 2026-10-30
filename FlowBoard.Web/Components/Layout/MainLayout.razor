@@ -1,0 +1,26 @@
+﻿@inherits LayoutComponentBase
+
+@inject AuthenticationService AuthenticationService
+@inject NavigationManager Navigation
+
+<div class="page app-shell">
+
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main class="app-main">
+        <div class="app-topbar d-flex align-items-center justify-content-between">
+            <span class="app-topbar-label">Your projects, in focus</span>
+            <span class="app-topbar-label d-none d-sm-inline">
+                Plan <span class="mx-1">·</span> Align <span class="mx-1">·</span> Deliver
+            </span>
+        </div>
+
+        <div class="content">
+            @Body
+            <Toast />
+        </div>
+    </main>
+
+</div>

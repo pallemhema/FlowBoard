@@ -1,0 +1,339 @@
+@page "/profile"
+
+@using FlowBoard.Shared.DTOs.Auth
+
+@inject ProfileApiService ProfileApiService
+
+<PageTitle>My Profile</PageTitle>
+
+<div class="page-shell">
+
+    <div class="row justify-content-center">
+
+        <div class="col-12 col-md-8 col-lg-6">
+
+            <div class="d-flex justify-content-between align-items-center mb-4">
+
+                <div>
+                    <p class="section-label mb-2">Account</p>
+                    <h1 class="page-title mb-2">My profile</h1>
+                    <p class="page-subtitle">
+                        Manage your personal information.
+                    </p>
+                </div>
+
+            </div>
+
+            @if (isLoading)
+            {
+                <div class="card shadow-sm border-0">
+
+                    <div class="card-body text-center py-5">
+
+                        <div class="spinner-border text-primary mb-3"
+                             role="status">
+                            <span class="visually-hidden">
+                                Loading...
+                            </span>
+                        </div>
+
+                        <p class="text-muted mb-0">
+                            Loading your profile...
+                        </p>
+
+                    </div>
+
+                </div>
+            }
+            else if (profile is null)
+            {
+                <div class="alert alert-danger d-flex align-items-center"
+                     role="alert">
+
+                    <div>
+                        Unable to load your profile.
+                    </div>
+
+                </div>
+            }
+            else if (!isEditing)
+            {
+                <div class="form-surface">
+                    <h2 class="section-heading mb-4">Profile information</h2>
+                    <div class="row g-3">
+                        <div class="col-sm-6">
+                            <span class="detail-metric-label">First name</span>
+                            <div class="fw-semibold">@profile.FirstName</div>
+                        </div>
+                        <div class="col-sm-6">
+                            <span class="detail-metric-label">Last name</span>
+                            <div class="fw-semibold">@profile.LastName</div>
+                        </div>
+                        <div class="col-sm-6">
+                            <span class="detail-metric-label">Email</span>
+                            <div class="fw-semibold">@profile.Email</div>
+                        </div>
+                        <div class="col-sm-6">
+                            <span class="detail-metric-label">Role</span>
+                            <div><span class="badge bg-primary">@profile.Role</span></div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-end mt-4">
+                        <button type="button" class="btn btn-primary" @onclick="StartEditing">
+                            <i class="bi bi-pencil me-2" aria-hidden="true"></i>Edit profile
+                        </button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="form-surface">
+                    <h2 class="section-heading mb-4">Edit profile</h2>
+
+                        <EditForm Model="@editRequest"
+                                  OnValidSubmit="@HandleSaveAsync"
+                                  FormName="profile-edit-form">
+
+                            <DataAnnotationsValidator />
+
+                            <!-- FIRST NAME -->
+
+                            <div class="mb-3">
+
+                                <label class="form-label">
+                                    First Name
+                                </label>
+
+                                <InputText @bind-Value="editRequest.FirstName"
+                                           class="form-control"
+                                           placeholder="Enter your first name" />
+
+                                <ValidationMessage For="@(() => editRequest.FirstName)" />
+
+                            </div>
+
+                            <!-- LAST NAME -->
+
+                            <div class="mb-4">
+
+                                <label class="form-label">
+                                    Last Name
+                                </label>
+
+                                <InputText @bind-Value="editRequest.LastName"
+                                           class="form-control"
+                                           placeholder="Enter your last name" />
+
+                                <ValidationMessage For="@(() => editRequest.LastName)" />
+
+                            </div>
+
+                            <!-- ACTIONS -->
+
+                            <div class="d-flex justify-content-end gap-2">
+
+                                <button type="button"
+                                        class="btn btn-outline-secondary"
+                                        disabled="@isSaving"
+                                        @onclick="CancelEditing">
+
+                                    Cancel
+
+                                </button>
+
+                                <button type="submit"
+                                        class="btn btn-primary"
+                                        disabled="@isSaving">
+
+                                    @if (isSaving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"
+                                              role="status">
+                                        </span>
+
+                                        <span>
+                                            Saving...
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span>
+                                            Save Changes
+                                        </span>
+                                    }
+
+                                </button>
+
+                            </div>
+
+                        </EditForm>
+
+                </div>
+            }
+
+        </div>
+
+    </div>
+
+</div>
+
+@code {
+
+    private ProfileResponse? profile;
+
+    private UpdateProfileRequest editRequest = new();
+
+    private bool isLoading = true;
+
+    private bool isEditing;
+
+    private bool isSaving;
+
+    // ============================================================
+    // INITIALIZE
+    // ============================================================
+
+    protected override async Task OnInitializedAsync()
+    {
+        Console.WriteLine();
+        Console.WriteLine(
+            "========== PROFILE PAGE INITIALIZATION ==========");
+
+        await LoadProfileAsync();
+
+        Console.WriteLine(
+            "========== PROFILE PAGE INITIALIZATION END ==========");
+    }
+
+    // ============================================================
+    // LOAD PROFILE
+    // ============================================================
+
+    private async Task LoadProfileAsync()
+    {
+        isLoading = true;
+
+        try
+        {
+            Console.WriteLine(
+                "PROFILE PAGE: Loading profile.");
+
+            profile =
+                await ProfileApiService.GetProfileAsync();
+
+            if (profile is null)
+            {
+                Console.WriteLine(
+                    "PROFILE PAGE: Profile load failed.");
+
+
+
+                return;
+            }
+
+            Console.WriteLine(
+                "PROFILE PAGE: Profile loaded successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"PROFILE PAGE: Error loading profile: {ex}");
+
+
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    // ============================================================
+    // START EDITING
+    // ============================================================
+
+    private void StartEditing()
+    {
+        if (profile is null)
+        {
+            return;
+        }
+
+        Console.WriteLine(
+            "PROFILE PAGE: Edit mode enabled.");
+
+        editRequest = new UpdateProfileRequest
+        {
+            FirstName = profile.FirstName,
+            LastName = profile.LastName
+        };
+
+        isEditing = true;
+    }
+
+    // ============================================================
+    // SAVE
+    // ============================================================
+
+    private async Task HandleSaveAsync()
+    {
+        Console.WriteLine();
+        Console.WriteLine(
+            "========== PROFILE UPDATE ==========");
+
+        isSaving = true;
+
+        try
+        {
+            Console.WriteLine(
+                "PROFILE PAGE: Saving profile.");
+
+            var updatedProfile =
+                await ProfileApiService.UpdateProfileAsync(
+                    editRequest);
+
+            if (updatedProfile is null)
+            {
+                Console.WriteLine(
+                    "PROFILE PAGE: Profile update failed.");
+
+            
+
+                return;
+            }
+
+            profile = updatedProfile;
+
+            isEditing = false;
+
+            Console.WriteLine(
+                "PROFILE PAGE: Profile updated successfully.");
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"PROFILE PAGE: Error updating profile: {ex}");
+
+         
+        }
+        finally
+        {
+            isSaving = false;
+        }
+
+        Console.WriteLine(
+            "========== PROFILE UPDATE END ==========");
+    }
+
+    // ============================================================
+    // CANCEL
+    // ============================================================
+
+    private void CancelEditing()
+    {
+        Console.WriteLine(
+            "PROFILE PAGE: Edit cancelled.");
+
+        isEditing = false;
+    }
+}

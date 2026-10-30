@@ -1,0 +1,89 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/create"
+@inject IBoardApiService BoardApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Create Board</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Create Board</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Workspace</p>
+            <h1 class="page-title">Create board</h1>
+            <p class="page-subtitle">Give this board a name and a purpose.</p>
+        </div>
+    </header>
+
+    <div class="form-surface">
+        <BoardForm
+            Model="@model"
+            OnSubmit="@CreateAsync"
+            OnCancel="@Cancel"
+            IsLoading="@isLoading"
+            SubmitText="Create board"
+            LoadingText="Creating..."
+            ErrorMessage="@errorMessage" />
+    </div>
+
+</div>
+
+@code {
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    private BoardFormModel model = new();
+
+    private bool isLoading;
+
+    private string? errorMessage;
+
+    private async Task CreateAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new CreateBoardRequest
+            {
+                Name = model.Name,
+                Description = model.Description,
+                WorkspaceId = WorkspaceId
+            };
+
+            var board =
+                await BoardApiService.CreateAsync(request);
+
+            if (board is null)
+            {
+                errorMessage =
+                    "Unable to create the board.";
+
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{WorkspaceId}/boards/{board.Id}");
+        }
+        catch
+        {
+            errorMessage = "Unable to create the board. Please try again.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}");
+    }
+}

@@ -1,0 +1,273 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/members/{UserId:guid}/edit"
+
+@using FlowBoard.Shared.DTOs.BoardMembers
+@using FlowBoard.Web.Models.BoardMembers
+
+@inject IBoardMemberApiService BoardMemberApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Edit Member Role</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}?section=members")">Members</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Edit Member</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Board members</p>
+            <h1 class="page-title">Edit member role</h1>
+            <p class="page-subtitle">Change this member's access level on the board.</p>
+        </div>
+    </header>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+
+            <div class="spinner-border"
+                 role="status">
+
+                <span class="visually-hidden">
+                    Loading...
+                </span>
+
+            </div>
+
+            <p class="text-muted mt-3">
+                Loading member...
+            </p>
+
+        </div>
+    }
+    else if (model is null)
+    {
+        <EmptyState
+            Title="Member not found"
+            Message="The board member could not be found." />
+    }
+    else
+    {
+        <div class="form-surface">
+
+                <div class="mb-4">
+
+                    <h5 class="mb-1">
+                        @memberName
+                    </h5>
+
+                    <small class="text-muted">
+                        @memberEmail
+                    </small>
+
+                </div>
+
+                <EditForm Model="@model"
+                          OnValidSubmit="@UpdateAsync">
+
+                    <DataAnnotationsValidator />
+
+                    @if (!string.IsNullOrWhiteSpace(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">@errorMessage</div>
+                    }
+
+                    <div class="mb-3">
+
+                        <label class="form-label">
+                            Role
+                        </label>
+
+                        <InputSelect @bind-Value="model.Role"
+                                     class="form-select">
+
+                            <option value="@BoardMemberRole.Viewer">
+                                Viewer
+                            </option>
+
+                            <option value="@BoardMemberRole.Editor">
+                                Editor
+                            </option>
+
+                        </InputSelect>
+
+                        <ValidationMessage
+                            For="@(() => model.Role)" />
+
+                    </div>
+
+                    <div class="d-flex gap-2">
+
+                        <button type="submit"
+                                class="btn btn-primary"
+                                disabled="@isSubmitting">
+
+                            @if (isSubmitting)
+                            {
+                                <span>Saving...</span>
+                            }
+                            else
+                            {
+                                <span>Update Role</span>
+                            }
+
+                        </button>
+
+                        <button type="button"
+                                class="btn btn-secondary"
+                                @onclick="Cancel"
+                                disabled="@isSubmitting">
+
+                            Cancel
+
+                        </button>
+
+                    </div>
+
+                </EditForm>
+
+        </div>
+    }
+
+</div>
+
+@code {
+
+    // ============================================================
+    // ROUTE PARAMETERS
+    // ============================================================
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    [Parameter]
+    public Guid UserId { get; set; }
+
+
+    // ============================================================
+    // STATE
+    // ============================================================
+
+    private BoardMemberFormModel? model;
+
+    private bool isLoading = true;
+
+    private bool isSubmitting;
+
+    private string? errorMessage;
+
+    private string memberName = string.Empty;
+
+    private string memberEmail = string.Empty;
+
+
+    // ============================================================
+    // INITIALIZATION
+    // ============================================================
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var request = new PagedSearchRequest
+            {
+                Page = 1,
+                PageSize = 100
+            };
+
+            var result =
+                await BoardMemberApiService.GetAsync(
+                    BoardId,
+                    request);
+
+            var member =
+                result?.Items?
+                    .FirstOrDefault(x => x.UserId == UserId);
+
+            if (member is null)
+            {
+                return;
+            }
+
+            memberName =
+                $"{member.FirstName} {member.LastName}";
+
+            memberEmail =
+                member.Email;
+
+            model = new BoardMemberFormModel
+            {
+                UserId = member.UserId.ToString(),
+                Role = member.Role
+            };
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+
+    // ============================================================
+    // UPDATE ROLE
+    // ============================================================
+
+    private async Task UpdateAsync()
+    {
+        if (model is null || isSubmitting)
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new UpdateBoardMemberRoleRequest
+            {
+                Role = model.Role
+            };
+
+            var success =
+                await BoardMemberApiService.UpdateRoleAsync(
+                    BoardId,
+                    UserId,
+                    request);
+
+            if (!success)
+            {
+                errorMessage = "Unable to update the member role. Please try again.";
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{WorkspaceId}/boards/{BoardId}?section=members");
+        }
+            catch
+            {
+                errorMessage = "Unable to update the member role. Please try again.";
+            }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+
+    // ============================================================
+    // CANCEL
+    // ============================================================
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}?section=members");
+    }
+}

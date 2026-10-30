@@ -1,0 +1,331 @@
+@* @page "/register"
+
+
+
+@rendermode InteractiveServer
+
+@inject IAuthenticationService AuthenticationService
+@inject NavigationManager Navigation
+
+<PageTitle>Register</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-panel">
+        <span class="brand-mark auth-brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+        <p class="section-label mt-4 mb-2">Get started</p>
+        <h1 class="page-title mb-2">Create your account</h1>
+        <p class="page-subtitle mb-4">Set up your profile to start organizing work.</p>
+
+        <EditForm Model="@registerRequest"
+              OnValidSubmit="@HandleRegisterAsync"
+              FormName="register-form">
+
+        <DataAnnotationsValidator />
+
+        <!-- First Name -->
+
+        <div class="mb-3">
+
+            <label class="form-label" for="register-first-name">First name</label>
+
+            <InputText id="register-first-name" @bind-Value="registerRequest.FirstName"
+                       class="form-control"
+                       placeholder="Enter your first name" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.FirstName)" />
+
+        </div>
+
+        <!-- Last Name -->
+
+        <div class="mb-3">
+
+            <label class="form-label" for="register-last-name">Last name</label>
+
+            <InputText id="register-last-name" @bind-Value="registerRequest.LastName"
+                       class="form-control"
+                       placeholder="Enter your last name" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.LastName)" />
+
+        </div>
+
+        <!-- Email -->
+
+        <div class="mb-3">
+
+            <label class="form-label" for="register-email">Email</label>
+
+            <InputText id="register-email" @bind-Value="registerRequest.Email"
+                       class="form-control"
+                       placeholder="Enter your email" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.Email)" />
+
+        </div>
+
+        <!-- Password -->
+
+        <div class="mb-4">
+
+            <label class="form-label" for="register-password">Password</label>
+
+            <InputText id="register-password" @bind-Value="registerRequest.Password"
+                       type="password"
+                       class="form-control"
+                       placeholder="Enter your password" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.Password)" />
+
+        </div>
+
+        <!-- Error -->
+
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger">
+                @errorMessage
+            </div>
+        }
+
+        <!-- Register Button -->
+
+        <button type="submit"
+                class="btn btn-primary w-100"
+                disabled="@isLoading">
+
+            @if (isLoading)
+            {
+                <span>Creating account...</span>
+            }
+            else
+            {
+                <span>Register</span>
+            }
+
+        </button>
+
+        </EditForm>
+        <p class="text-muted text-center small mt-4 mb-0">
+            Already have an account? <NavLink href="/login">Log in</NavLink>
+        </p>
+    </section>
+</div>
+
+@code {
+
+    private RegisterRequest registerRequest = new();
+
+    private bool isLoading;
+
+    private string? errorMessage;
+
+    private async Task HandleRegisterAsync()
+    {
+        if (isLoading)
+        {
+            Console.WriteLine(
+                "REGISTER PAGE: Registration already in progress. Ignoring duplicate submit.");
+
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                "========== REGISTER PAGE: SUBMIT ==========");
+
+            Console.WriteLine(
+                $"REGISTER PAGE: FirstName = {registerRequest.FirstName}");
+
+            Console.WriteLine(
+                $"REGISTER PAGE: LastName = {registerRequest.LastName}");
+
+            Console.WriteLine(
+                $"REGISTER PAGE: Email = {registerRequest.Email}");
+
+            Console.WriteLine(
+                "REGISTER PAGE: Calling AuthenticationService.RegisterAsync()");
+
+            var success =
+                await AuthenticationService.RegisterAsync(
+                    registerRequest);
+
+            Console.WriteLine(
+                $"REGISTER PAGE: Registration result = {success}");
+
+            if (!success)
+            {
+                errorMessage =
+                    "Registration failed. Please check your details and try again.";
+
+                Console.WriteLine(
+                    "REGISTER PAGE: Registration failed.");
+
+                return;
+            }
+
+            Console.WriteLine(
+                "REGISTER PAGE: Registration successful.");
+
+            Console.WriteLine(
+                "REGISTER PAGE: User automatically authenticated.");
+
+            Console.WriteLine(
+                "REGISTER PAGE: Navigating to /");
+
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"REGISTER PAGE: Registration exception = {ex}");
+
+            errorMessage =
+                "An unexpected error occurred during registration.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+} *@
+
+
+@page "/register"
+
+@rendermode InteractiveServer
+
+@using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Web.Services.Authentication
+
+@inject IAuthenticationService AuthenticationService
+@inject NavigationManager Navigation
+
+<PageTitle>Register</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-panel">
+        <span class="brand-mark auth-brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+        <p class="section-label mt-4 mb-2">Get started</p>
+        <h1 class="page-title mb-2">Create your account</h1>
+        <p class="page-subtitle mb-4">Set up your profile to start organizing work.</p>
+
+    <EditForm Model="@registerRequest"
+              OnValidSubmit="@RegisterAsync"
+              FormName="Register">
+
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+
+            <label class="form-label" for="register-first-name">First name</label>
+
+            <InputText id="register-first-name" @bind-Value="registerRequest.FirstName"
+                       class="form-control"
+                       placeholder="Enter your first name" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.FirstName)" />
+
+        </div>
+
+        <div class="mb-3">
+
+            <label class="form-label" for="register-last-name">Last name</label>
+
+            <InputText id="register-last-name" @bind-Value="registerRequest.LastName"
+                       class="form-control"
+                       placeholder="Enter your last name" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.LastName)" />
+
+        </div>
+
+        <div class="mb-3">
+
+            <label class="form-label" for="register-email">Email</label>
+
+            <InputText id="register-email" @bind-Value="registerRequest.Email"
+                       class="form-control"
+                       placeholder="Enter your email" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.Email)" />
+
+        </div>
+
+        <div class="mb-4">
+
+            <label class="form-label" for="register-password">Password</label>
+
+            <InputText id="register-password" @bind-Value="registerRequest.Password"
+                       type="password"
+                       class="form-control"
+                       placeholder="Enter your password" />
+
+            <ValidationMessage
+                For="@(() => registerRequest.Password)" />
+
+        </div>
+
+        <button type="submit"
+                class="btn btn-primary w-100"
+                disabled="@isSubmitting">
+
+            @(isSubmitting
+                ? "Creating account..."
+                : "Register")
+
+        </button>
+
+        </EditForm>
+        <p class="text-muted text-center small mt-4 mb-0">
+            Already have an account? <NavLink href="/login">Log in</NavLink>
+        </p>
+    </section>
+</div>
+
+@code {
+
+    private readonly RegisterRequest registerRequest = new();
+
+    private bool isSubmitting;
+
+    private async Task RegisterAsync()
+    {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+
+        try
+        {
+            var success =
+                await AuthenticationService.RegisterAsync(
+                    registerRequest);
+
+            if (!success)
+            {
+                return;
+            }
+
+            Navigation.NavigateTo("/");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

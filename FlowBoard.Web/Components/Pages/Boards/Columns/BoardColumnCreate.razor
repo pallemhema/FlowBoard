@@ -1,0 +1,98 @@
+@page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/columns/create"
+
+@using FlowBoard.Shared.DTOs.BoardColumns
+
+@inject IBoardColumnApiService BoardColumnApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Create Column</PageTitle>
+
+<div class="page-shell">
+
+    <Breadcrumbs>
+        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink></li>
+        <li class="breadcrumb-item active" aria-current="page">Create Column</li>
+    </Breadcrumbs>
+
+    <header class="page-header">
+        <div>
+            <p class="section-label mb-2">Board</p>
+            <h1 class="page-title">Create column</h1>
+            <p class="page-subtitle">Add a new step to this board's workflow.</p>
+        </div>
+    </header>
+
+    <div class="form-surface">
+        <BoardColumnForm
+            Model="@model"
+            OnSubmit="CreateAsync"
+            OnCancel="Cancel"
+            IsSubmitting="@isSubmitting"
+            ErrorMessage="@errorMessage"
+            SubmitText="Create column" />
+    </div>
+
+</div>
+
+@code {
+
+    [Parameter]
+    public Guid WorkspaceId { get; set; }
+
+    [Parameter]
+    public Guid BoardId { get; set; }
+
+    private BoardColumnFormModel model = new();
+
+    private bool isSubmitting;
+
+    private string? errorMessage;
+
+    private async Task CreateAsync(
+        BoardColumnFormModel form)
+    {
+        if (isSubmitting)
+            return;
+
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var request = new CreateBoardColumnRequest
+            {
+                Name = form.Name
+            };
+
+            var result =
+                await BoardColumnApiService.CreateAsync(
+                    BoardId,
+                    request);
+
+            if (result is null)
+            {
+                errorMessage = "Unable to create the column. Please try again.";
+                return;
+            }
+
+            Navigation.NavigateTo(
+                $"/workspaces/{WorkspaceId}/boards/{BoardId}");
+        }
+            catch
+            {
+                errorMessage = "Unable to create the column. Please try again.";
+            }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{WorkspaceId}/boards/{BoardId}");
+    }
+}
