@@ -1,0 +1,36 @@
+.workspace-owner[b-pgikxav4fr] {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.workspace-owner-details[b-pgikxav4fr] {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.workspace-owner-name[b-pgikxav4fr] {
+  overflow: hidden;
+  color: var(--flowboard-ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-owner-email[b-pgikxav4fr] {
+  overflow: hidden;
+  color: var(--flowboard-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-owner-fallback[b-pgikxav4fr] {
+  color: var(--flowboard-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+}

@@ -22,7 +22,7 @@ public class WorkspaceController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [Authorize(Policy = AuthorizationPolicies.AdminOrManager)]
     public async Task<ActionResult<WorkspaceResponse>> Create(
         CreateWorkspaceRequest request,
         CancellationToken cancellationToken)

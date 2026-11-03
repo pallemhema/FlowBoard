@@ -48,6 +48,10 @@ public class MyTasksService : IMyTasksService
                 "Overdue-only filtering is unavailable because board columns do not have a reliable completed-status field.");
         }
 
+        var domainPriority = request.Priority.HasValue
+            ? MapToDomainPriority(request.Priority.Value)
+            : (CardPriority?)null;
+
         var userId = _currentUserService.UserId;
         var accessibleBoardIds = _boardAuthorizationService
             .GetAccessibleBoardsQuery()
@@ -59,11 +63,10 @@ public class MyTasksService : IMyTasksService
                 card.AssignedUserId == userId &&
                 accessibleBoardIds.Contains(card.BoardColumn.BoardId));
 
-        if (request.Priority.HasValue)
+        if (domainPriority.HasValue)
         {
             query = query.Where(
-                card => (SharedCardPriority)card.Priority ==
-                        request.Priority.Value);
+                card => card.Priority == domainPriority.Value);
         }
 
         if (request.BoardColumnId.HasValue)
@@ -121,7 +124,7 @@ public class MyTasksService : IMyTasksService
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
-        var items = await query
+        var taskData = await query
             .OrderBy(card => card.DueDate == null)
             .ThenBy(card => card.DueDate)
             .ThenBy(card => card.BoardColumn.Board.Name)
@@ -130,12 +133,12 @@ public class MyTasksService : IMyTasksService
             .ThenBy(card => card.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(card => new MyTaskResponse
+            .Select(card => new
             {
-                CardId = card.Id,
+                card.Id,
                 Title = card.Title,
                 Description = card.Description,
-                Priority = (SharedCardPriority)card.Priority,
+                card.Priority,
                 DueDate = card.DueDate,
                 BoardColumnId = card.BoardColumnId,
                 ColumnName = card.BoardColumn.Name,
@@ -154,6 +157,27 @@ public class MyTasksService : IMyTasksService
             })
             .ToListAsync(cancellationToken);
 
+        var items = taskData
+            .Select(task => new MyTaskResponse
+            {
+                CardId = task.Id,
+                Title = task.Title,
+                Description = task.Description,
+                Priority = MapToSharedPriority(task.Priority),
+                DueDate = task.DueDate,
+                BoardColumnId = task.BoardColumnId,
+                ColumnName = task.ColumnName,
+                BoardId = task.BoardId,
+                BoardName = task.BoardName,
+                WorkspaceId = task.WorkspaceId,
+                WorkspaceName = task.WorkspaceName,
+                ProjectId = task.ProjectId,
+                ProjectName = task.ProjectName,
+                AssignedUserId = task.AssignedUserId,
+                AssignedUserName = task.AssignedUserName
+            })
+            .ToList();
+
         return new PagedResponse<MyTaskResponse>
         {
             Items = items,
@@ -164,4 +188,32 @@ public class MyTasksService : IMyTasksService
                 totalCount / (double)request.PageSize)
         };
     }
+
+    private static CardPriority MapToDomainPriority(
+        SharedCardPriority priority) =>
+        priority switch
+        {
+            SharedCardPriority.Low => CardPriority.Low,
+            SharedCardPriority.Medium => CardPriority.Medium,
+            SharedCardPriority.High => CardPriority.High,
+            SharedCardPriority.Critical => CardPriority.Critical,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(priority),
+                priority,
+                "Invalid task priority.")
+        };
+
+    private static SharedCardPriority MapToSharedPriority(
+        CardPriority priority) =>
+        priority switch
+        {
+            CardPriority.Low => SharedCardPriority.Low,
+            CardPriority.Medium => SharedCardPriority.Medium,
+            CardPriority.High => SharedCardPriority.High,
+            CardPriority.Critical => SharedCardPriority.Critical,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(priority),
+                priority,
+                "Invalid task priority.")
+        };
 }

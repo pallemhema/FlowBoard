@@ -7,6 +7,7 @@ using FlowBoard.Shared.DTOs.Auth;
 using FlowBoard.Shared.DTOs.Common;
 using FlowBoard.Shared.DTOs.Teams;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace FlowBoard.Api.Services.Teams;
 
@@ -118,6 +119,11 @@ public class TeamService : ITeamService
         Guid teamId,
         CancellationToken cancellationToken = default)
     {
+        await using var transaction =
+            await _dbContext.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken);
+
         var team = await _dbContext.Teams
             .FirstOrDefaultAsync(team => team.Id == teamId, cancellationToken);
 
@@ -126,8 +132,17 @@ public class TeamService : ITeamService
             throw new NotFoundException("Team was not found.");
         }
 
+        if (await _dbContext.TeamMembers.AnyAsync(
+                member => member.TeamId == teamId,
+                cancellationToken))
+        {
+            throw new ConflictException(
+                "The team cannot be deleted while members are assigned. Remove its members first.");
+        }
+
         _dbContext.Teams.Remove(team);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
     }
 
     public async Task<PagedResponse<TeamMemberResponse>> GetMembersAsync(
@@ -167,7 +182,12 @@ public class TeamService : ITeamService
                     UserId = member.User.Id,
                     Email = member.User.Email,
                     FirstName = member.User.FirstName,
-                    LastName = member.User.LastName
+                    LastName = member.User.LastName,
+                    Role = member.User.Role == UserRole.Manager
+                        ? nameof(UserRole.Manager)
+                        : member.User.Role == UserRole.Admin
+                            ? nameof(UserRole.Admin)
+                            : nameof(UserRole.Employee)
                 }
             })
             .ToListAsync(cancellationToken);
@@ -377,7 +397,8 @@ public class TeamService : ITeamService
             UserId = user.Id,
             Email = user.Email,
             FirstName = user.FirstName,
-            LastName = user.LastName
+            LastName = user.LastName,
+            Role = user.Role.ToString()
         };
     }
 

@@ -9,8 +9,13 @@ using FlowBoard.Domain.Entities;
 using FlowBoard.Domain.Enums;
 using FlowBoard.Infrastructure.Data;
 using FlowBoard.Web.Configuration;
+using FlowBoard.Web.Services.Api;
+using FlowBoard.Web.Services.Authentication;
+using FlowBoard.Web.Services.UI;
+using FlowBoard.Shared.DTOs.Auth;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -47,8 +52,12 @@ public class AuthenticationSecurityTests
         Assert.Throws<InvalidOperationException>(weakSettings.Validate);
     }
 
-    [Fact]
-    public void TokenService_GeneratesTokenValidatedByConfiguredSigningKey()
+    [Theory]
+    [InlineData(nameof(UserRole.Admin))]
+    [InlineData(nameof(UserRole.Manager))]
+    [InlineData(nameof(UserRole.Employee))]
+    public void TokenService_GeneratesTokenValidatedByConfiguredSigningKey(
+        string role)
     {
         var settings = CreateJwtSettings();
         settings.Validate();
@@ -58,7 +67,7 @@ public class AuthenticationSecurityTests
         var token = tokenService.GenerateAccessToken(
             userId,
             "employee@example.test",
-            nameof(UserRole.Employee));
+            role);
 
         var principal = new JwtSecurityTokenHandler().ValidateToken(
             token,
@@ -78,7 +87,112 @@ public class AuthenticationSecurityTests
             out _);
 
         Assert.Equal(userId.ToString(), principal.FindFirstValue(ClaimTypes.NameIdentifier));
-        Assert.Equal(nameof(UserRole.Employee), principal.FindFirstValue(ClaimTypes.Role));
+        Assert.Equal(role, principal.FindFirstValue(ClaimTypes.Role));
+    }
+
+    [Fact]
+    public async Task AuthenticationStateProviderExposesIdentityAndRoleClaims()
+    {
+        var userId = Guid.NewGuid();
+        var provider = new FlowBoardAuthenticationStateProvider();
+
+        provider.SetAuthenticatedUser(
+        [
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Role, nameof(UserRole.Manager))
+        ]);
+
+        var state = await provider.GetAuthenticationStateAsync();
+
+        Assert.Equal(userId.ToString(), state.User.FindFirstValue(ClaimTypes.NameIdentifier));
+        Assert.True(state.User.IsInRole(nameof(UserRole.Manager)));
+
+        provider.Logout();
+        state = await provider.GetAuthenticationStateAsync();
+        Assert.False(state.User.Identity?.IsAuthenticated);
+    }
+
+    [Fact]
+    public async Task FailedRefreshClearsExpiredLocalAuthenticationState()
+    {
+        var provider = new FlowBoardAuthenticationStateProvider();
+        var tokenState = new AccessTokenState();
+        tokenState.SetAccessToken("expired-access-token");
+        provider.SetAuthenticatedUser(
+        [
+            new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
+            new Claim(ClaimTypes.Role, nameof(UserRole.Employee))
+        ]);
+        var service = new FlowBoard.Web.Services.Authentication.AuthenticationService(
+            provider,
+            new StubAuthApiService("unused-refresh-token"),
+            tokenState,
+            new ToastService());
+
+        var refreshed = await service.RefreshAsync();
+        var state = await provider.GetAuthenticationStateAsync();
+
+        Assert.False(refreshed);
+        Assert.Null(tokenState.GetAccessToken());
+        Assert.False(state.User.Identity?.IsAuthenticated);
+    }
+
+    [Fact]
+    public async Task WebLoginKeepsRefreshTokenInHttpOnlyCookieNotResponseBody()
+    {
+        var refreshToken = "server-only-refresh-token";
+        var controller = new FlowBoard.Web.Controllers.AuthController(
+            new StubAuthApiService(refreshToken),
+            CreateEnvironment(Environments.Development))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Login(
+            new LoginRequest
+            {
+                Email = "employee@example.test",
+                Password = "StrongPassword1!"
+            },
+            CancellationToken.None);
+
+        var response = Assert.IsType<AuthenticationResult>(
+            Assert.IsType<OkObjectResult>(result).Value);
+        var cookieHeader = controller.Response.Headers.SetCookie.ToString();
+
+        Assert.Equal("access-token", response.AccessToken);
+        Assert.Empty(response.RefreshToken);
+        Assert.DoesNotContain(refreshToken, System.Text.Json.JsonSerializer.Serialize(response));
+        Assert.Contains(refreshToken, cookieHeader);
+        Assert.Contains("expires=", cookieHeader, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("httponly", cookieHeader, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WebRefreshDeletesCookieWhenBackendRejectsRefreshToken()
+    {
+        var httpContext = new DefaultHttpContext();
+        httpContext.Request.Headers.Cookie = "refreshToken=expired-token";
+        var controller = new FlowBoard.Web.Controllers.AuthController(
+            new StubAuthApiService("unused-refresh-token"),
+            CreateEnvironment(Environments.Development))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = httpContext
+            }
+        };
+
+        var result = await controller.Refresh(CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result);
+        Assert.Contains(
+            "refreshToken=",
+            controller.Response.Headers.SetCookie.ToString(),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -122,12 +236,25 @@ public class AuthenticationSecurityTests
     }
 
     [Fact]
+    public void RefreshTokenCookieUsesBackendSuppliedExpiry()
+    {
+        var expiresAt = DateTimeOffset.UtcNow.AddDays(7);
+        var cookie = RefreshTokenCookieOptions.Create(
+            CreateEnvironment(Environments.Development),
+            requestIsHttps: false,
+            expiresAt: expiresAt);
+
+        Assert.Equal(expiresAt, cookie.Expires);
+    }
+
+    [Fact]
     public async Task RefreshTokenRotation_ConsumesTokenAndStoresOnlyReplacementHash()
     {
         await using var database = await TestDatabase.CreateAsync();
         var userId = Guid.NewGuid();
         await database.AddUserAndRefreshTokenAsync(userId, "original-token");
         var tokenService = new StubTokenService("replacement-token");
+        DateTime refreshTokenExpiresAt;
 
         await using (var context = database.CreateContext())
         {
@@ -136,6 +263,7 @@ public class AuthenticationSecurityTests
 
             Assert.Equal("replacement-token", result.RefreshToken);
             Assert.Equal("access-token", result.AccessToken);
+            refreshTokenExpiresAt = result.RefreshTokenExpiresAt;
         }
 
         await using var verificationContext = database.CreateContext();
@@ -147,6 +275,7 @@ public class AuthenticationSecurityTests
         Assert.NotNull(originalToken.RevokedAt);
         Assert.Null(replacementToken.RevokedAt);
         Assert.NotEqual("replacement-token", replacementToken.TokenHash);
+        Assert.Equal(replacementToken.ExpiresAt, refreshTokenExpiresAt);
     }
 
     [Fact]
@@ -286,6 +415,43 @@ public class AuthenticationSecurityTests
             ContentRootPath = AppContext.BaseDirectory,
             ContentRootFileProvider = new NullFileProvider()
         };
+    }
+
+    private sealed class StubAuthApiService(string refreshToken) : IAuthApiService
+    {
+        public Task<AuthenticationResult?> LoginAsync(
+            LoginRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AuthenticationResult?>(null);
+
+        public Task<AuthenticationResult?> LoginBackendAsync(
+            LoginRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AuthenticationResult?>(new AuthenticationResult
+            {
+                AccessToken = "access-token",
+                RefreshToken = refreshToken,
+                ExpiresAt = DateTime.UtcNow.AddMinutes(1),
+                RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(7)
+            });
+
+        public Task<AuthenticationResult?> RefreshAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AuthenticationResult?>(null);
+
+        public Task<AuthenticationResult?> RefreshBackendAsync(
+            string value,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<AuthenticationResult?>(null);
+
+        public Task<bool> LogoutAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<bool> LogoutBackendAsync(
+            string value,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
     }
 
     private sealed class TestHostEnvironment : IHostEnvironment

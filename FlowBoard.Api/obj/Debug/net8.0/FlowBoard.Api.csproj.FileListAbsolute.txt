@@ -125,3 +125,4 @@
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Api/bin/Debug/net8.0/Microsoft.IdentityModel.Protocols.OpenIdConnect.dll
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Api/bin/Debug/net8.0/Microsoft.IdentityModel.Tokens.dll
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Api/bin/Debug/net8.0/System.IdentityModel.Tokens.Jwt.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Api/obj/Debug/net8.0/FlowBoard.Api.sourcelink.json

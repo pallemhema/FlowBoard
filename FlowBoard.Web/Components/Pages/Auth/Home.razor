@@ -1,40 +1,106 @@
 ﻿@page "/"
 
+@using FlowBoard.Web.Navigation
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAuthorizationService AuthorizationService
+@inject NavigationManager Navigation
+
 <PageTitle>FlowBoard</PageTitle>
 
 <div class="page-shell">
     <section class="home-hero">
         <div class="home-hero-copy">
             <p class="section-label mb-3">Work, made visible</p>
-            <h1 class="home-title">Bring your projects<br />into focus.</h1>
+
+            <h1 class="home-title">
+                Bring your projects<br />
+                into focus.
+            </h1>
+
             <p class="home-description">
-                Plan work with your team, keep every task moving, and see progress clearly from the first idea to done.
+                Plan work with your team, keep every task moving,
+                and see progress clearly from the first idea to done.
             </p>
-            <AuthorizeView>
+
+            <AuthorizeView Policy="@AuthorizationPolicies.AuthenticatedUser">
                 <Authorized>
-                    <NavLink class="btn btn-primary btn-lg" href="/workspaces">
-                        Go to workspaces <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                    <NavLink class="btn btn-primary btn-lg"
+                             href="/workspaces">
+                        Go to workspaces
+                        <i class="bi bi-arrow-right ms-2"
+                           aria-hidden="true"></i>
                     </NavLink>
                 </Authorized>
+
                 <NotAuthorized>
                     <div class="d-flex flex-wrap gap-2">
-                        <NavLink class="btn btn-primary btn-lg" href="/register">Get started</NavLink>
-                        <NavLink class="btn btn-outline-secondary btn-lg" href="/login">Log in</NavLink>
+                        <NavLink class="btn btn-outline-secondary btn-lg"
+                                 href="/login">
+                            Log in
+                        </NavLink>
                     </div>
+
+                    <p class="mt-3 text-muted">
+                        Accounts are available by administrator invitation.
+                    </p>
                 </NotAuthorized>
             </AuthorizeView>
         </div>
+
         <div class="home-hero-art" aria-hidden="true">
             <div class="hero-board">
-                <div class="hero-board-title"><span></span><span></span><span></span></div>
+                <div class="hero-board-title">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+
                 <div class="hero-columns">
-                    <div class="hero-column"><i></i><i></i><i></i></div>
-                    <div class="hero-column"><i></i><i></i></div>
-                    <div class="hero-column"><i></i><i></i><i></i></div>
+                    <div class="hero-column">
+                        <i></i>
+                        <i></i>
+                        <i></i>
+                    </div>
+
+                    <div class="hero-column">
+                        <i></i>
+                        <i></i>
+                    </div>
+
+                    <div class="hero-column">
+                        <i></i>
+                        <i></i>
+                        <i></i>
+                    </div>
                 </div>
             </div>
+
             <span class="hero-orbit hero-orbit-one"></span>
             <span class="hero-orbit hero-orbit-two"></span>
         </div>
     </section>
 </div>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState =
+            await AuthenticationStateProvider.GetAuthenticationStateAsync();
+
+        var user = authenticationState.User;
+
+        if (user.Identity?.IsAuthenticated != true)
+            return;
+
+        var authorizedPolicies =
+            await AppNavigation.GetAuthorizedPoliciesAsync(
+                user,
+                AuthorizationService);
+
+        var destination =
+            AppNavigation.DashboardHrefForPolicies(authorizedPolicies);
+
+        Navigation.NavigateTo(destination, replace: true);
+    }
+}

@@ -9,3 +9,4 @@
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Domain/obj/Debug/net8.0/refint/FlowBoard.Domain.dll
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Domain/obj/Debug/net8.0/FlowBoard.Domain.pdb
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Domain/obj/Debug/net8.0/ref/FlowBoard.Domain.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Domain/obj/Debug/net8.0/FlowBoard.Domain.sourcelink.json

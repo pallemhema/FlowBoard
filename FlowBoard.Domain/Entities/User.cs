@@ -15,7 +15,11 @@ public class User : BaseEntity
 
     public UserRole Role { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
+
+    public ICollection<UserInvitation> Invitations { get; set; } = [];
 
     public ICollection<Board> OwnedBoards { get; set; } = [];
 

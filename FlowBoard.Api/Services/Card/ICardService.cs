@@ -15,6 +15,16 @@ public interface ICardService
         CardQueryRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResponse<CardResponse>> GetByBoardAsync(
+        Guid boardId,
+        CardQueryRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<CardResponse>> GetByProjectAsync(
+        Guid projectId,
+        CardQueryRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<CardResponse> GetByIdAsync(
         Guid cardId,
         CancellationToken cancellationToken = default);
@@ -27,6 +37,11 @@ public interface ICardService
     Task MoveAsync(
         Guid cardId,
         MoveCardRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task SetAssigneeAsync(
+        Guid cardId,
+        Guid? employeeId,
         CancellationToken cancellationToken = default);
 
     Task DeleteAsync(

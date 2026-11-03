@@ -18,12 +18,16 @@ public interface IManagerEmployeeService
         PagedRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<PagedResponse<ManagerEmployeeResponse>> GetAllAsync(
+    Task<PagedResponse<ManagerEmployeeResponse>> GetMyReportingManagersAsync(
         PagedRequest request,
         CancellationToken cancellationToken = default);
 
-    Task RemoveManagedEmployeeAsync(
-        Guid employeeId,
+    Task<PagedResponse<ReportingGroupMemberResponse>> GetMyReportingGroupAsync(
+        PagedRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<ManagerEmployeeResponse>> GetAllAsync(
+        PagedRequest request,
         CancellationToken cancellationToken = default);
 
     Task RemoveAsync(

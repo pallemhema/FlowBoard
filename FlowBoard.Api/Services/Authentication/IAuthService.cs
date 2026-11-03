@@ -5,8 +5,28 @@ namespace FlowBoard.Api.Services.Authentication;
 
 public interface IAuthService
 {
-    Task<AuthenticationResult> RegisterAsync(
-        RegisterRequest request,
+    Task<CreateUserResponse> CreateUserAsync(
+        CreateUserRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<CreateUserResponse> ReissueInvitationAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<PromoteUserResponse> PromoteEmployeeToManagerAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task DeactivateUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task ReactivateUserAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task ActivateInvitationAsync(
+        ActivateInvitationRequest request,
         CancellationToken cancellationToken = default);
 
     Task<AuthenticationResult> LoginAsync(

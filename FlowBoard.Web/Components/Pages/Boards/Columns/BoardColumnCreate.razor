@@ -1,8 +1,8 @@
 @page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/columns/create"
-
-@using FlowBoard.Shared.DTOs.BoardColumns
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 @inject IBoardColumnApiService BoardColumnApiService
+@inject IBoardApiService BoardApiService
 @inject NavigationManager Navigation
 
 <PageTitle>Create Column</PageTitle>
@@ -24,15 +24,32 @@
         </div>
     </header>
 
-    <div class="form-surface">
-        <BoardColumnForm
-            Model="@model"
-            OnSubmit="CreateAsync"
-            OnCancel="Cancel"
-            IsSubmitting="@isSubmitting"
-            ErrorMessage="@errorMessage"
-            SubmitText="Create column" />
-    </div>
+    @if (isLoading)
+    {
+        <div class="text-muted py-4" role="status">Loading board...</div>
+    }
+    else if (!canManageBoard)
+    {
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <div class="alert alert-danger" role="alert">@errorMessage</div>
+        }
+        <EmptyState
+            Title="Board management unavailable"
+            Message="Only authorized board managers can add columns. Approval requests are not currently available." />
+    }
+    else
+    {
+        <div class="form-surface">
+            <BoardColumnForm
+                Model="@model"
+                OnSubmit="CreateAsync"
+                OnCancel="Cancel"
+                IsSubmitting="@isSubmitting"
+                ErrorMessage="@errorMessage"
+                SubmitText="Create column" />
+        </div>
+    }
 
 </div>
 
@@ -48,7 +65,30 @@
 
     private bool isSubmitting;
 
+    private bool isLoading = true;
+
+    private bool canManageBoard;
+
     private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var board = await BoardApiService.GetByIdAsync(BoardId);
+            canManageBoard = board is not null &&
+                board.WorkspaceId == WorkspaceId &&
+                board.CanManageBoard;
+        }
+        catch
+        {
+            errorMessage = "Unable to load this board.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
 
     private async Task CreateAsync(
         BoardColumnFormModel form)

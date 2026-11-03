@@ -18,22 +18,6 @@ public interface IAuthApiService
 
 
     // ============================================================
-    // REGISTER
-    // ============================================================
-
-    Task<AuthenticationResult?> RegisterAsync(
-        RegisterRequest request,
-        CancellationToken cancellationToken = default);
-
-
-
-
-    Task<AuthenticationResult?> RegisterBackendAsync(
-        RegisterRequest request,
-        CancellationToken cancellationToken = default);
-
-
-    // ============================================================
     // REFRESH
     // ============================================================
 

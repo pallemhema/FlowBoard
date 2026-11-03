@@ -1,0 +1,365 @@
+@page "/manager/assignments"
+@attribute [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
+@implements IDisposable
+
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.ManagerEmployees
+
+@inject IManagerEmployeeApiService ManagerEmployeeApiService
+
+<PageTitle>My Assignments | FlowBoard</PageTitle>
+
+<div class="page-shell manager-assignments-page">
+    <PageHeader Title="My Assignments"
+                Eyebrow="People"
+                Description="View employees who report directly to you and the details of each reporting relationship." />
+<section class="manager-assignments-panel mb-4"
+         aria-labelledby="my-reporting-manager-title">
+
+    <div class="manager-assignments-heading">
+        <div>
+            <p class="section-label mb-1">Reporting relationship</p>
+            <h2 id="my-reporting-manager-title">My Reporting Manager</h2>
+        </div>
+        <span class="manager-assignments-icon" aria-hidden="true">
+            <i class="bi bi-person-badge"></i>
+        </span>
+    </div>
+
+    @if (isLoadingManager)
+    {
+        <div class="manager-assignments-loading" role="status">
+            <span class="spinner-border spinner-border-sm text-primary"></span>
+            <span>Loading your reporting manager...</span>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(managerError))
+    {
+        <div class="manager-assignments-error" role="alert">
+            @managerError
+            <button class="btn btn-sm btn-outline-secondary ms-auto"
+                    @onclick="LoadReportingManagerAsync">
+                Retry
+            </button>
+        </div>
+    }
+    else if (reportingManagers is { Items.Count: 0 })
+    {
+        <EmptyState Title="No reporting manager assigned"
+                    Message="No reporting manager is currently assigned to your account." />
+    }
+    else if (reportingManagers is not null)
+    {
+        <div class="manager-assignment-grid">
+            @foreach (var relationship in reportingManagers.Items)
+            {
+                <article class="manager-assignment-card"
+                         @key="relationship.ManagerId">
+
+                    <UserAvatar FirstName="@relationship.Manager.FirstName"
+                                LastName="@relationship.Manager.LastName"
+                                SizeRem="2.75" />
+
+                    <div class="manager-assignment-card-copy">
+                        <strong>@GetEmployeeName(relationship.Manager)</strong>
+                        <span>@relationship.Manager.Email</span>
+                        <span class="manager-assignment-role">
+                            @GetRole(relationship.Manager.Role)
+                        </span>
+                    </div>
+
+                    <span class="manager-assignment-card-meta">
+                        Since @relationship.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+                    </span>
+                </article>
+            }
+        </div>
+    }
+</section>
+    <section class="manager-assignments-panel" aria-labelledby="manager-assignments-title">
+        <div class="manager-assignments-heading">
+            <div>
+                <p class="section-label mb-1">Reporting relationships</p>
+                <h2 id="manager-assignments-title">My Direct Reports</h2>
+                <p>These relationships are separate from team membership and work access.</p>
+            </div>
+            <div class="manager-assignments-heading-meta">
+                @if (employeesPage is not null)
+                {
+                    <span class="manager-assignments-total">
+                        @employeesPage.TotalCount @(employeesPage.TotalCount == 1 ? "employee" : "employees")
+                    </span>
+                }
+                <span class="manager-assignments-icon" aria-hidden="true">
+                    <i class="bi bi-person-lines-fill"></i>
+                </span>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="manager-assignments-loading" role="status" aria-live="polite">
+                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                <span>Loading your direct reports…</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            <div class="manager-assignments-error" role="alert">
+                <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                <span>@loadError</span>
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary ms-auto"
+                        @onclick="() => LoadEmployeesAsync(currentPage)">
+                    Retry
+                </button>
+            </div>
+        }
+        else if (employeesPage is { Items.Count: 0 })
+        {
+            <EmptyState Title="No direct reports"
+                        Message="Employees assigned to you through Manager-Employee relationships will appear here." />
+        }
+        else if (employeesPage is not null)
+        {
+            <div class="manager-assignment-grid">
+                @foreach (var relationship in employeesPage.Items)
+                {
+                    <button type="button"
+                            class="manager-assignment-card"
+                            aria-label="@($"View {GetEmployeeName(relationship.Employee)} details")"
+                            @key="relationship.EmployeeId"
+                            @onclick="() => SelectEmployee(relationship)">
+                        <UserAvatar FirstName="@relationship.Employee.FirstName"
+                                    LastName="@relationship.Employee.LastName"
+                                    SizeRem="2.75" />
+                        <span class="manager-assignment-card-copy">
+                            <strong>@GetEmployeeName(relationship.Employee)</strong>
+                            <span>@relationship.Employee.Email</span>
+                            <span class="manager-assignment-role">@GetRole(relationship.Employee.Role)</span>
+                        </span>
+                        <span class="manager-assignment-card-meta">
+                            <time datetime="@relationship.CreatedAt.ToString("O")">
+                                Since @relationship.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+                            </time>
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </span>
+                    </button>
+                }
+            </div>
+
+            @if (employeesPage.TotalCount > employeesPage.PageSize)
+            {
+                <Pagination CurrentPage="@employeesPage.Page"
+                            TotalPages="@employeesPage.TotalPages"
+                            TotalCount="@employeesPage.TotalCount"
+                            PageChanged="LoadEmployeesAsync" />
+            }
+        }
+    </section>
+</div>
+
+@if (selectedEmployee is not null)
+{
+    <div class="manager-assignment-backdrop" @onclick="CloseEmployeeDetails">
+        <section class="manager-assignment-detail"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="manager-assignment-detail-title"
+                 @onclick:stopPropagation>
+            <header class="manager-assignment-detail-header">
+                <div>
+                    <p class="section-label mb-1">Employee details</p>
+                    <h2 id="manager-assignment-detail-title">@GetEmployeeName(selectedEmployee.Employee)</h2>
+                </div>
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close employee details"
+                        @onclick="CloseEmployeeDetails">
+                </button>
+            </header>
+
+            <div class="manager-assignment-profile">
+                <UserAvatar FirstName="@selectedEmployee.Employee.FirstName"
+                            LastName="@selectedEmployee.Employee.LastName"
+                            SizeRem="3.5" />
+                <div>
+                    <h3>@GetEmployeeName(selectedEmployee.Employee)</h3>
+                    <span class="manager-assignment-role">@GetRole(selectedEmployee.Employee.Role)</span>
+                </div>
+            </div>
+
+            <section class="manager-assignment-detail-section" aria-labelledby="employee-profile-title">
+                <h3 id="employee-profile-title">Profile</h3>
+                <dl class="manager-assignment-details">
+                    <div>
+                        <dt>Email</dt>
+                        <dd><a href="@($"mailto:{selectedEmployee.Employee.Email}")">@selectedEmployee.Employee.Email</a></dd>
+                    </div>
+                    <div>
+                        <dt>Role</dt>
+                        <dd>@GetRole(selectedEmployee.Employee.Role)</dd>
+                    </div>
+                    <div>
+                        <dt>Employee ID</dt>
+                        <dd>@selectedEmployee.EmployeeId</dd>
+                    </div>
+                </dl>
+            </section>
+
+            <section class="manager-assignment-detail-section" aria-labelledby="employee-reporting-title">
+                <h3 id="employee-reporting-title">Reporting relationship</h3>
+                <div class="manager-assignment-relationship">
+                    <span class="manager-assignment-relationship-icon" aria-hidden="true">
+                        <i class="bi bi-person-check"></i>
+                    </span>
+                    <div>
+                        <strong>Direct report</strong>
+                        <span>Reporting to you since @selectedEmployee.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                    </div>
+                </div>
+                <p class="manager-assignment-note">
+                    Reporting relationships do not change team membership or access to workspaces, projects, or boards.
+                </p>
+            </section>
+
+            <section class="manager-assignment-detail-section" aria-labelledby="employee-teams-title">
+                <h3 id="employee-teams-title">Team memberships</h3>
+                <p class="manager-assignment-unavailable">
+                    Employee team memberships are not available through the existing Manager-scoped APIs.
+                </p>
+            </section>
+
+        </section>
+    </div>
+}
+
+@code {
+    private const int PageSize = 10;
+
+    private PagedResponse<ManagerEmployeeResponse>? employeesPage;
+    private ManagerEmployeeResponse? selectedEmployee;
+    private string? loadError;
+    private bool isLoading = true;
+    private bool disposed;
+    private int currentPage = 1;
+    private int requestVersion;
+    private CancellationTokenSource? activeRequest;
+    private PagedResponse<ManagerEmployeeResponse>? reportingManagers;
+private bool isLoadingManager = true;
+private string? managerError;
+
+private async Task LoadReportingManagerAsync()
+{
+    isLoadingManager = true;
+    managerError = null;
+
+    try
+    {
+        reportingManagers = await ManagerEmployeeApiService.GetMyReportingManagersAsync(
+            new PagedRequest { Page = 1, PageSize = 10 });
+
+        if (reportingManagers is null)
+        {
+            managerError = "Your reporting manager information is unavailable.";
+        }
+    }
+    catch (HttpRequestException)
+    {
+        managerError = "The reporting relationship service could not be reached.";
+    }
+    catch (JsonException)
+    {
+        managerError = "The reporting relationship service returned an invalid response.";
+    }
+    finally
+    {
+        isLoadingManager = false;
+    }
+}
+
+protected override async Task OnInitializedAsync()
+{
+    await Task.WhenAll(
+        LoadEmployeesAsync(1),
+        LoadReportingManagerAsync());
+}
+    private async Task LoadEmployeesAsync(int page)
+    {
+        activeRequest?.Cancel();
+        activeRequest?.Dispose();
+        activeRequest = new CancellationTokenSource();
+        var cancellationToken = activeRequest.Token;
+        var version = ++requestVersion;
+        currentPage = page;
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            employeesPage = await ManagerEmployeeApiService.GetManagedEmployeesAsync(
+                new PagedRequest { Page = page, PageSize = PageSize },
+                cancellationToken);
+
+            if (version != requestVersion || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (employeesPage is null)
+            {
+                loadError = "Your direct reports could not be loaded. Check your access and retry.";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (version == requestVersion)
+            {
+                employeesPage = null;
+                loadError = "The Manager-Employee service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == requestVersion)
+            {
+                employeesPage = null;
+                loadError = "The Manager-Employee service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == requestVersion && !disposed)
+            {
+                isLoading = false;
+            }
+        }
+    }
+
+    private void SelectEmployee(ManagerEmployeeResponse relationship) =>
+        selectedEmployee = relationship;
+
+    private void CloseEmployeeDetails()
+    {
+        selectedEmployee = null;
+    }
+
+    private static string GetEmployeeName(UserDirectoryResponse employee)
+    {
+        var name = $"{employee.FirstName} {employee.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? employee.Email : name;
+    }
+
+    private static string GetRole(string? role) =>
+        string.IsNullOrWhiteSpace(role) ? "Role unavailable" : role;
+
+    public void Dispose()
+    {
+        disposed = true;
+        activeRequest?.Cancel();
+        activeRequest?.Dispose();
+    }
+}

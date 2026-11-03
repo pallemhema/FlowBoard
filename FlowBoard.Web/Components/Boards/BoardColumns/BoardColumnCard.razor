@@ -1,0 +1,97 @@
+<article class="entity-card h-100 p-3 column-card position-relative">
+    <div class="d-flex align-items-start justify-content-between gap-2">
+        <div class="min-w-0">
+        <h2 class="h6 fw-semibold mb-2">
+            <a class="stretched-link link-dark text-decoration-none"
+               href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}/columns/{Column.Id}")">
+                @Column.Name
+            </a>
+        </h2>
+        <span class="text-muted small">Column @Column.Position</span>
+        </div>
+        @if (CanManageBoard && !confirmingDelete)
+        {
+            <button class="btn btn-sm btn-light border-0 column-actions-toggle"
+                    type="button"
+                    aria-label="Column actions"
+                    aria-expanded="@actionsOpen"
+                    @onclick="ToggleActions">
+                <i class="bi bi-three-dots" aria-hidden="true"></i>
+            </button>
+        }
+    </div>
+
+    @if (CanManageBoard && actionsOpen && !confirmingDelete)
+    {
+        <div class="column-action-menu">
+            <button type="button" class="dropdown-item" @onclick="EditAsync">
+                <i class="bi bi-pencil me-2" aria-hidden="true"></i>Edit column
+            </button>
+            <button type="button" class="dropdown-item text-danger" @onclick="RequestDelete">
+                <i class="bi bi-trash me-2" aria-hidden="true"></i>Delete column
+            </button>
+        </div>
+    }
+
+    @if (CanManageBoard && confirmingDelete)
+    {
+        <div class="column-confirm-delete mt-3" role="group" aria-label="Confirm column deletion">
+            <p class="small mb-2">Delete this column?</p>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-danger" type="button" @onclick="ConfirmDeleteAsync">Delete</button>
+                <button class="btn btn-sm btn-outline-secondary" type="button" @onclick="CancelDelete">Cancel</button>
+            </div>
+        </div>
+    }
+</article>
+
+@code {
+    [CascadingParameter(Name = "WorkspaceId")]
+    public Guid WorkspaceId { get; set; }
+
+    [CascadingParameter(Name = "BoardId")]
+    public Guid BoardId { get; set; }
+
+    [Parameter, EditorRequired]
+    public BoardColumnResponse Column { get; set; } = null!;
+
+    [Parameter]
+    public bool CanManageBoard { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardColumnResponse> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardColumnResponse> OnDelete { get; set; }
+
+    private bool confirmingDelete;
+    private bool actionsOpen;
+
+    private void ToggleActions()
+    {
+        actionsOpen = !actionsOpen;
+    }
+
+    private Task EditAsync()
+    {
+        actionsOpen = false;
+        return OnEdit.InvokeAsync(Column);
+    }
+
+    private void RequestDelete()
+    {
+        confirmingDelete = true;
+        actionsOpen = false;
+    }
+
+    private void CancelDelete()
+    {
+        confirmingDelete = false;
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        await OnDelete.InvokeAsync(Column);
+        confirmingDelete = false;
+    }
+}

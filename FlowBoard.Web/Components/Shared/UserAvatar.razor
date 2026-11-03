@@ -1,0 +1,39 @@
+<span class="user-avatar @(Square ? "user-avatar-square" : null)"
+      style="--avatar-size: @(SizeRem.ToString(System.Globalization.CultureInfo.InvariantCulture))rem"
+      aria-hidden="true">@Initials</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string LastName { get; set; } = string.Empty;
+
+    [Parameter]
+    public double SizeRem { get; set; } = 2;
+
+    [Parameter]
+    public bool Square { get; set; }
+
+    private string Initials
+    {
+        get
+        {
+            var first = FirstName.Trim();
+            var last = LastName.Trim();
+            if (first.Length == 0 && last.Length == 0)
+            {
+                return "U";
+            }
+
+            if (first.Length == 0)
+            {
+                return last[..1].ToUpperInvariant();
+            }
+
+            return last.Length == 0
+                ? first[..1].ToUpperInvariant()
+                : string.Concat(first[..1], last[..1]).ToUpperInvariant();
+        }
+    }
+}

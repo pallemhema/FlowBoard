@@ -49,19 +49,6 @@ public class ManagerEmployeesController : ControllerBase
         return Ok(employees);
     }
 
-    [HttpDelete("mine/employees/{employeeId:guid}")]
-    [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
-    public async Task<IActionResult> RemoveManagedEmployee(
-        Guid employeeId,
-        CancellationToken cancellationToken)
-    {
-        await _managerEmployeeService.RemoveManagedEmployeeAsync(
-            employeeId,
-            cancellationToken);
-
-        return NoContent();
-    }
-
     [HttpGet("mine/managers")]
     [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
     public async Task<ActionResult<PagedResponse<ManagerEmployeeResponse>>>
@@ -74,6 +61,34 @@ public class ManagerEmployeesController : ControllerBase
             cancellationToken);
 
         return Ok(managers);
+    }
+
+    [HttpGet("mine/reporting-managers")]
+    [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
+    public async Task<ActionResult<PagedResponse<ManagerEmployeeResponse>>>
+        GetMyReportingManagers(
+            [FromQuery] PagedRequest request,
+            CancellationToken cancellationToken)
+    {
+        var managers = await _managerEmployeeService.GetMyReportingManagersAsync(
+            request,
+            cancellationToken);
+
+        return Ok(managers);
+    }
+
+    [HttpGet("mine/reporting-group")]
+    [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
+    public async Task<ActionResult<PagedResponse<ReportingGroupMemberResponse>>>
+        GetMyReportingGroup(
+            [FromQuery] PagedRequest request,
+            CancellationToken cancellationToken)
+    {
+        var members = await _managerEmployeeService.GetMyReportingGroupAsync(
+            request,
+            cancellationToken);
+
+        return Ok(members);
     }
 
     [HttpGet]

@@ -1,0 +1,524 @@
+@implements IDisposable
+
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Common
+@using FlowBoard.Shared.DTOs.Projects
+@using FlowBoard.Web.Services.Api
+@using FlowBoard.Web.Services.GlobalSearch
+
+@inject IUserDirectoryApiService UserDirectoryApiService
+@inject ITeamApiService TeamApiService
+@inject IWorkspaceApiService WorkspaceApiService
+@inject IProjectApiService ProjectApiService
+@inject IBoardApiService BoardApiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<div class="global-search-container" @onclick:stopPropagation="true">
+    <label class="global-search" for="global-search-input">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input id="global-search-input"
+               type="search"
+               value="@searchText"
+               placeholder="Search FlowBoard"
+               autocomplete="off"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-expanded="@isOpen"
+               aria-controls="global-search-results"
+               aria-activedescendant="@GetActiveDescendant()"
+               @oninput="HandleInput"
+               @onkeydown="HandleKeyDown"
+               @onfocus="HandleFocus" />
+        @if (isLoading)
+        {
+            <span class="spinner-border spinner-border-sm text-primary" aria-label="Searching"></span>
+        }
+        else if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            <button type="button"
+                    class="global-search-clear"
+                    aria-label="Clear search"
+                    @onclick="ClearSearch">
+                <i class="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
+        }
+      
+    </label>
+
+    @if (isOpen)
+    {
+        <section id="global-search-results"
+                 class="global-search-results"
+                 role="listbox"
+                 aria-label="Global search results">
+            @if ((searchText ?? string.Empty).Trim().Length < MinimumSearchLength)
+            {
+                <div class="global-search-hint">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <span>Type at least two characters to search resources available to your account.</span>
+                </div>
+            }
+            else if (isLoading && results.Count == 0)
+            {
+                <div class="global-search-state" role="status">
+                    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                    <span>Searching across FlowBoard…</span>
+                </div>
+            }
+            else if (results.Count == 0 && failedCategories.Count == 0)
+            {
+                <div class="global-search-state">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <strong>No results found</strong>
+                    <span>Try a different name, email, or description.</span>
+                </div>
+            }
+            else
+            {
+                @if (failedCategories.Count > 0)
+                {
+                    <div class="global-search-warning" role="status">
+                        Some categories could not be searched: @string.Join(", ", failedCategories).
+                    </div>
+                }
+                @foreach (var category in categoryOrder)
+                {
+                    var categoryResults = results
+                        .Select((result, index) => (result, index))
+                        .Where(item => item.result.Category == category)
+                        .ToList();
+                    if (categoryResults.Count > 0)
+                    {
+                        <div class="global-search-group" role="group" aria-label="@category">
+                            <h2>@category</h2>
+                            @foreach (var item in categoryResults)
+                            {
+                                <button id="@GetResultId(item.index)"
+                                        type="button"
+                                        class="global-search-result @(activeResultIndex == item.index ? "global-search-result-active" : null)"
+                                        role="option"
+                                        aria-selected="@(activeResultIndex == item.index)"
+                                        @onmouseenter="() => activeResultIndex = item.index"
+                                        @onclick="() => NavigateToResult(item.result)">
+                                    <span class="global-search-result-icon" aria-hidden="true">
+                                        <i class="bi @item.result.Icon"></i>
+                                    </span>
+                                    <span class="global-search-result-copy">
+                                        <strong>@item.result.Name</strong>
+                                        <small>@item.result.Secondary</small>
+                                    </span>
+                                    <span class="global-search-result-type">@item.result.Type</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                }
+                @if (isLoading)
+                {
+                    <div class="global-search-footer" role="status">
+                        <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                        Updating results…
+                    </div>
+                }
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private const int MinimumSearchLength = 2;
+    private const int ResultsPerCategory = 5;
+
+    private string? searchText;
+    private List<SearchResult> results = [];
+    private List<string> failedCategories = [];
+    private IReadOnlyList<string> categoryOrder = [];
+    private CancellationTokenSource? debounceCancellation;
+    private CancellationTokenSource? activeSearchCancellation;
+    private int activeResultIndex = -1;
+    private bool isOpen;
+    private bool isLoading;
+    private bool isDisposed;
+
+    [Parameter]
+    public EventCallback<bool> SearchStateChanged { get; set; }
+
+    private async Task HandleInput(ChangeEventArgs args)
+    {
+        searchText = args.Value?.ToString();
+        activeResultIndex = -1;
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            CancelPendingSearch();
+            results = [];
+            failedCategories = [];
+            isLoading = false;
+            await SetOpenAsync(false);
+            return;
+        }
+
+        await SetOpenAsync(true);
+        if (searchText.Trim().Length < MinimumSearchLength)
+        {
+            CancelPendingSearch();
+            results = [];
+            failedCategories = [];
+            isLoading = false;
+            return;
+        }
+
+        debounceCancellation?.Cancel();
+        debounceCancellation?.Dispose();
+        debounceCancellation = new CancellationTokenSource();
+        var token = debounceCancellation.Token;
+        isLoading = true;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(350), token);
+            if (!token.IsCancellationRequested)
+            {
+                await SearchAsync(searchText.Trim(), token);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private Task HandleFocus()
+    {
+        if (!string.IsNullOrWhiteSpace(searchText))
+        {
+            return SetOpenAsync(true);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape")
+        {
+            await CloseAsync();
+            return;
+        }
+
+        if (args.Key == "ArrowDown" && results.Count > 0)
+        {
+            isOpen = true;
+            activeResultIndex = (activeResultIndex + 1) % results.Count;
+        }
+        else if (args.Key == "ArrowUp" && results.Count > 0)
+        {
+            isOpen = true;
+            activeResultIndex = activeResultIndex <= 0
+                ? results.Count - 1
+                : activeResultIndex - 1;
+        }
+        else if (args.Key == "Enter" &&
+                 activeResultIndex >= 0 &&
+                 activeResultIndex < results.Count)
+        {
+            await NavigateToResult(results[activeResultIndex]);
+        }
+    }
+
+    private async Task SearchAsync(string query, CancellationToken debounceToken)
+    {
+        activeSearchCancellation?.Cancel();
+        activeSearchCancellation?.Dispose();
+        activeSearchCancellation = CancellationTokenSource.CreateLinkedTokenSource(debounceToken);
+        var cancellationToken = activeSearchCancellation.Token;
+
+        try
+        {
+            var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+            var role = user.IsInRole("Admin")
+                ? "Admin"
+                : user.IsInRole("Manager")
+                    ? "Manager"
+                    : user.IsInRole("Employee")
+                        ? "Employee"
+                        : null;
+            var categories = GlobalSearchScope.ForRole(role);
+            categoryOrder = categories
+                .Select(category => category.Entity.ToString())
+                .ToArray();
+
+            var searches = await Task.WhenAll(categories.Select(category =>
+                SearchCategoryAsync(category, role, query, cancellationToken)));
+
+            if (cancellationToken.IsCancellationRequested || isDisposed)
+            {
+                return;
+            }
+
+            results = searches.SelectMany(search => search.Results).ToList();
+            failedCategories = searches
+                .Where(search => search.Failed)
+                .Select(search => search.Category)
+                .ToList();
+            activeResultIndex = -1;
+        }
+        finally
+        {
+            if (!cancellationToken.IsCancellationRequested && !isDisposed)
+            {
+                isLoading = false;
+            }
+        }
+    }
+
+    private Task<CategorySearchResult> SearchCategoryAsync(
+        GlobalSearchCategory category,
+        string? role,
+        string query,
+        CancellationToken cancellationToken)
+    {
+        var categoryName = category.Entity.ToString();
+        var pageRequest = new PagedSearchRequest
+        {
+            Page = 1,
+            PageSize = ResultsPerCategory,
+            Search = query
+        };
+
+        return category.Source switch
+        {
+            GlobalSearchSource.UserDirectory =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => UserDirectoryApiService.GetAsync(pageRequest, token),
+                    user => new SearchResult(
+                        GetFullName(user.FirstName, user.LastName),
+                        categoryName,
+                        "User",
+                        $"{user.Email} · {user.Role}",
+                        "bi-person",
+                        Destination(role, category.Entity)),
+                    cancellationToken),
+            GlobalSearchSource.AllTeams =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => TeamApiService.GetAllAsync(pageRequest, token),
+                    team => new SearchResult(
+                        team.Name,
+                        categoryName,
+                        "Team",
+                        $"{team.MemberCount:N0} members",
+                        "bi-diagram-3",
+                        Destination(role, category.Entity)),
+                    cancellationToken),
+            GlobalSearchSource.MyTeams =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => TeamApiService.GetMineAsync(pageRequest, token),
+                    team => new SearchResult(
+                        team.Name,
+                        categoryName,
+                        "Team",
+                        $"{team.MemberCount:N0} members",
+                        "bi-diagram-3",
+                        Destination(role, category.Entity)),
+                    cancellationToken),
+            GlobalSearchSource.Workspaces =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => WorkspaceApiService.GetAsync(pageRequest, token),
+                    workspace => new SearchResult(
+                        workspace.Name,
+                        categoryName,
+                        "Workspace",
+                        workspace.Description ?? "Workspace",
+                        "bi-grid",
+                        Destination(role, category.Entity, workspace.Id)),
+                    cancellationToken),
+            GlobalSearchSource.AllProjects =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => ProjectApiService.GetAsync(
+                        new ProjectQueryRequest
+                        {
+                            Page = 1,
+                            PageSize = ResultsPerCategory,
+                            Search = query
+                        },
+                        token),
+                    project => new SearchResult(
+                        project.Name,
+                        categoryName,
+                        "Project",
+                        $"Workspace: {project.WorkspaceName}",
+                        "bi-kanban",
+                        Destination(role, category.Entity, project.ProjectId)),
+                    cancellationToken),
+            GlobalSearchSource.MyProjects =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => ProjectApiService.GetMineAsync(
+                        new ProjectQueryRequest
+                        {
+                            Page = 1,
+                            PageSize = ResultsPerCategory,
+                            Search = query
+                        },
+                        token),
+                    project => new SearchResult(
+                        project.Name,
+                        categoryName,
+                        "Project",
+                        $"Workspace: {project.WorkspaceName}",
+                        "bi-kanban",
+                        Destination(role, category.Entity, project.ProjectId)),
+                    cancellationToken),
+            GlobalSearchSource.AccessibleBoards =>
+                SearchCategoryAsync(
+                    categoryName,
+                    token => BoardApiService.GetAsync(
+                        new BoardQueryRequest
+                        {
+                            Page = 1,
+                            PageSize = ResultsPerCategory,
+                            Search = query
+                        },
+                        token),
+                    board => new SearchResult(
+                        board.Name,
+                        categoryName,
+                        board.Purpose == FlowBoard.Shared.Enums.BoardPurpose.Project
+                            ? "Project board"
+                            : "General/Learning board",
+                        board.WorkspaceName,
+                        "bi-columns-gap",
+                        Destination(
+                            role,
+                            category.Entity,
+                            board.Id,
+                            board.WorkspaceId)),
+                    cancellationToken),
+            _ => throw new InvalidOperationException(
+                $"Unsupported global search source: {category.Source}.")
+        };
+    }
+
+    private static string Destination(
+        string? role,
+        GlobalSearchEntity entity,
+        Guid? resourceId = null,
+        Guid? parentId = null) =>
+        GlobalSearchScope.GetDestination(role, entity, resourceId, parentId)
+        ?? throw new InvalidOperationException(
+            $"No search destination is configured for {role ?? "an unknown role"} and {entity}.");
+
+    private static async Task<CategorySearchResult> SearchCategoryAsync<T>(
+        string category,
+        Func<CancellationToken, Task<PagedResponse<T>?>> getPage,
+        Func<T, SearchResult> map,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var response = await getPage(cancellationToken);
+            return response is null
+                ? new CategorySearchResult(category, [], true)
+                : new CategorySearchResult(
+                    category,
+                    response.Items.Take(ResultsPerCategory).Select(map).ToList(),
+                    false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new CategorySearchResult(category, [], false);
+        }
+        catch (HttpRequestException)
+        {
+            return new CategorySearchResult(category, [], true);
+        }
+        catch (JsonException)
+        {
+            return new CategorySearchResult(category, [], true);
+        }
+    }
+
+    private async Task ClearSearch()
+    {
+        searchText = null;
+        results = [];
+        failedCategories = [];
+        activeResultIndex = -1;
+        CancelPendingSearch();
+        isLoading = false;
+        await SetOpenAsync(false);
+    }
+
+    public async Task CloseAsync()
+    {
+        activeResultIndex = -1;
+        await SetOpenAsync(false);
+    }
+
+    private async Task SetOpenAsync(bool open)
+    {
+        if (isOpen == open)
+        {
+            return;
+        }
+
+        isOpen = open;
+        await SearchStateChanged.InvokeAsync(open);
+    }
+
+    private async Task NavigateToResult(SearchResult result)
+    {
+        CancelPendingSearch();
+        isOpen = false;
+        isLoading = false;
+        await SearchStateChanged.InvokeAsync(false);
+        Navigation.NavigateTo(result.Href);
+    }
+
+    private void CancelPendingSearch()
+    {
+        debounceCancellation?.Cancel();
+        debounceCancellation?.Dispose();
+        debounceCancellation = null;
+        activeSearchCancellation?.Cancel();
+        activeSearchCancellation?.Dispose();
+        activeSearchCancellation = null;
+    }
+
+    private string? GetActiveDescendant() =>
+        activeResultIndex >= 0 && activeResultIndex < results.Count
+            ? GetResultId(activeResultIndex)
+            : null;
+
+    private static string GetResultId(int index) => $"global-search-result-{index}";
+
+    private static string GetFullName(string firstName, string lastName)
+    {
+        var name = $"{firstName} {lastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? "Unnamed user" : name;
+    }
+
+    public void Dispose()
+    {
+        isDisposed = true;
+        CancelPendingSearch();
+    }
+
+    private sealed record SearchResult(
+        string Name,
+        string Category,
+        string Type,
+        string Secondary,
+        string Icon,
+        string Href);
+
+    private sealed record CategorySearchResult(
+        string Category,
+        List<SearchResult> Results,
+        bool Failed);
+}

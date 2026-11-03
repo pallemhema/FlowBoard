@@ -1,4 +1,5 @@
 @page "/workspaces/{WorkspaceId:guid}/boards"
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 @inject IBoardApiService BoardApiService
 @inject NavigationManager Navigation
 
@@ -48,6 +49,7 @@
             @foreach (var board in boards)
             {
                 <BoardCard
+                    @key="board.Id"
                     Board="board"
                     OnOpen="OpenBoard" />
             }
@@ -161,27 +163,4 @@
             $"/workspaces/{WorkspaceId}/boards/{board.Id}");
     }
 
-    private void EditBoard(
-        BoardResponse board)
-    {
-        Navigation.NavigateTo(
-            $"/workspaces/{WorkspaceId}/boards/{board.Id}/edit");
-    }
-
-    private async Task DeleteBoard(
-        BoardResponse board)
-    {
-        var deleted =
-            await BoardApiService.DeleteAsync(
-                board.Id);
-
-        if (!deleted)
-        {
-            return;
-        }
-
-        boards.Remove(board);
-
-        StateHasChanged();
-    }
 }

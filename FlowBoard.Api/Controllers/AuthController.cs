@@ -6,6 +6,7 @@ using FlowBoard.Api.Services.CurrentUser;
 using FlowBoard.Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace FlowBoard.Api.Controllers;
 
@@ -26,20 +27,95 @@ public class AuthController : ControllerBase
     }
 
     // ============================================================
-    // REGISTER
+    // PUBLIC REGISTRATION IS DISABLED
     // ============================================================
 
-    [AllowAnonymous]
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
     [HttpPost("register")]
-    public async Task<ActionResult<AuthenticationResult>> Register(
-       RegisterRequest request,
-       CancellationToken cancellationToken)
+    public IActionResult Register()
     {
-        var result = await _authService.RegisterAsync(
+        return StatusCode(StatusCodes.Status410Gone);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("users")]
+    public async Task<ActionResult<CreateUserResponse>> CreateUser(
+        CreateUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var result = await _authService.CreateUserAsync(
             request,
             cancellationToken);
 
         return Ok(result);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("users/{userId:guid}/promote-to-manager")]
+    public async Task<ActionResult<PromoteUserResponse>> PromoteEmployeeToManager(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var result = await _authService.PromoteEmployeeToManagerAsync(
+            userId,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("users/{userId:guid}/deactivate")]
+    public async Task<IActionResult> DeactivateUser(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await _authService.DeactivateUserAsync(
+            userId,
+            cancellationToken);
+
+        return NoContent();
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("users/{userId:guid}/reactivate")]
+    public async Task<IActionResult> ReactivateUser(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        await _authService.ReactivateUserAsync(
+            userId,
+            cancellationToken);
+
+        return NoContent();
+    }
+
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpPost("users/{userId:guid}/invitation")]
+    public async Task<ActionResult<CreateUserResponse>> ReissueInvitation(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        Response.Headers.CacheControl = "no-store";
+        var result = await _authService.ReissueInvitationAsync(
+            userId,
+            cancellationToken);
+
+        return Ok(result);
+    }
+
+    [AllowAnonymous]
+    [EnableRateLimiting("InvitationActivation")]
+    [HttpPost("invitations/activate")]
+    public async Task<IActionResult> ActivateInvitation(
+        ActivateInvitationRequest request,
+        CancellationToken cancellationToken)
+    {
+        await _authService.ActivateInvitationAsync(
+            request,
+            cancellationToken);
+
+        return NoContent();
     }
 
     // ============================================================

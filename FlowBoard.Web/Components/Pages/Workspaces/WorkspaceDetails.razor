@@ -1,10 +1,13 @@
 @page "/workspaces/{Id:guid}"
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 @using FlowBoard.Shared.DTOs.Workspaces
+@using System.Security.Claims
 
 @inject IWorkspaceApiService WorkspaceApiService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Workspace</PageTitle>
 
@@ -63,15 +66,18 @@
                     }
                 </div>
 
-                <div class="d-flex gap-2 flex-shrink-0">
-                    <button type="button" class="btn btn-outline-secondary" @onclick="EditWorkspace">
-                        <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit
-                    </button>
-                    <button type="button" class="btn btn-outline-danger" disabled="@isDeleting" @onclick="HandleDelete">
-                        <i class="bi bi-trash me-1" aria-hidden="true"></i>
-                        @(isDeleting ? "Deleting..." : "Delete")
-                    </button>
-                </div>
+                @if (canManageWorkspace)
+                {
+                    <div class="d-flex gap-2 flex-shrink-0">
+                        <button type="button" class="btn btn-outline-secondary" @onclick="EditWorkspace">
+                            <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" disabled="@isDeleting" @onclick="HandleDelete">
+                            <i class="bi bi-trash me-1" aria-hidden="true"></i>
+                            @(isDeleting ? "Deleting..." : "Delete")
+                        </button>
+                    </div>
+                }
             </div>
         </header>
 
@@ -88,10 +94,18 @@
                         <span>@workspace.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</span>
                     </div>
                 </div>
-                <div class="col-sm-8">
+                <div class="col-sm-4">
                     <div class="detail-metric">
                         <span class="detail-metric-label">Description</span>
                         <span>@(string.IsNullOrWhiteSpace(workspace.Description) ? "No description provided." : workspace.Description)</span>
+                    </div>
+                </div>
+                <div class="col-sm-4">
+                    <div class="detail-metric">
+                        <span class="detail-metric-label">Owner</span>
+                        <WorkspaceOwner OwnerName="@workspace.OwnerName"
+                                        OwnerEmail="@workspace.OwnerEmail"
+                                        SizeRem="1.75" />
                     </div>
                 </div>
             </div>
@@ -112,6 +126,7 @@
     private bool isLoading;
 
     private bool isDeleting;
+    private bool canManageWorkspace;
 
     private string? deleteError;
 
@@ -123,6 +138,7 @@
     private async Task LoadWorkspaceAsync()
     {
         isLoading = true;
+        canManageWorkspace = false;
 
         try
         {
@@ -133,6 +149,12 @@
             {
                 return;
             }
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            canManageWorkspace = authState.User.IsInRole("Admin") ||
+                                 (Guid.TryParse(userId, out var ownerId) &&
+                                  workspace.OwnerId == ownerId);
         }
         finally
         {

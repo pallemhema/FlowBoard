@@ -68,16 +68,15 @@ public class ManagerEmployeeService : IManagerEmployeeService
                 "Only users with the Employee role can be assigned to a manager.");
         }
 
-        var alreadyAssigned = await _dbContext.ManagerEmployees
-            .AnyAsync(
-                relationship => relationship.ManagerId == managerId &&
-                                relationship.EmployeeId == employee.Id,
-                cancellationToken);
+        var existingManagerId = await _dbContext.ManagerEmployees
+            .Where(relationship => relationship.EmployeeId == employee.Id)
+            .Select(relationship => (Guid?)relationship.ManagerId)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (alreadyAssigned)
+        if (existingManagerId.HasValue)
         {
-            throw new ConflictException(
-                "The employee is already assigned to this manager.");
+            throw CreateExistingAssignmentConflict(
+                existingManagerId.Value == managerId);
         }
 
         var relationship = new ManagerEmployee
@@ -96,16 +95,15 @@ public class ManagerEmployeeService : IManagerEmployeeService
         catch (DbUpdateException)
         {
             _dbContext.Entry(relationship).State = EntityState.Detached;
-            var duplicateExists = await _dbContext.ManagerEmployees
-                .AnyAsync(
-                    existing => existing.ManagerId == managerId &&
-                                existing.EmployeeId == employee.Id,
-                    cancellationToken);
+            var managerIdAfterFailure = await _dbContext.ManagerEmployees
+                .Where(existing => existing.EmployeeId == employee.Id)
+                .Select(existing => (Guid?)existing.ManagerId)
+                .FirstOrDefaultAsync(cancellationToken);
 
-            if (duplicateExists)
+            if (managerIdAfterFailure.HasValue)
             {
-                throw new ConflictException(
-                    "The employee is already assigned to this manager.");
+                throw CreateExistingAssignmentConflict(
+                    managerIdAfterFailure.Value == managerId);
             }
 
             throw;
@@ -145,7 +143,8 @@ public class ManagerEmployeeService : IManagerEmployeeService
                     UserId = relationship.Manager.Id,
                     Email = relationship.Manager.Email,
                     FirstName = relationship.Manager.FirstName,
-                    LastName = relationship.Manager.LastName
+                    LastName = relationship.Manager.LastName,
+                    Role = nameof(UserRole.Manager)
                 },
                 EmployeeId = relationship.EmployeeId,
                 Employee = new UserDirectoryResponse
@@ -153,7 +152,8 @@ public class ManagerEmployeeService : IManagerEmployeeService
                     UserId = relationship.Employee.Id,
                     Email = relationship.Employee.Email,
                     FirstName = relationship.Employee.FirstName,
-                    LastName = relationship.Employee.LastName
+                    LastName = relationship.Employee.LastName,
+                    Role = nameof(UserRole.Employee)
                 },
                 CreatedAt = relationship.CreatedAt
             })
@@ -162,7 +162,29 @@ public class ManagerEmployeeService : IManagerEmployeeService
         return CreatePage(items, request.Page, totalCount, request.PageSize);
     }
 
-    public async Task<PagedResponse<ManagerEmployeeResponse>> GetMyManagersAsync(
+    public Task<PagedResponse<ManagerEmployeeResponse>> GetMyManagersAsync(
+        PagedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return GetManagersForUserAsync(
+            _currentUserService.UserId,
+            UserRole.Employee,
+            request,
+            cancellationToken);
+    }
+
+    public Task<PagedResponse<ManagerEmployeeResponse>> GetMyReportingManagersAsync(
+        PagedRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        return GetManagersForUserAsync(
+            _currentUserService.UserId,
+            UserRole.Manager,
+            request,
+            cancellationToken);
+    }
+
+    public async Task<PagedResponse<ReportingGroupMemberResponse>> GetMyReportingGroupAsync(
         PagedRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -173,9 +195,70 @@ public class ManagerEmployeeService : IManagerEmployeeService
             "The authenticated user is not an Employee.",
             cancellationToken);
 
+        var reportingManagerCount = await _dbContext.ManagerEmployees
+            .CountAsync(
+                relationship => relationship.EmployeeId == employeeId,
+                cancellationToken);
+        if (reportingManagerCount > 1)
+        {
+            throw new ConflictException(
+                "The reporting group cannot be determined because multiple reporting Managers are recorded for this Employee.");
+        }
+
+        var reportingManagerIds = _dbContext.ManagerEmployees
+            .Where(relationship => relationship.EmployeeId == employeeId)
+            .Select(relationship => relationship.ManagerId);
+
         var query = _dbContext.ManagerEmployees
             .AsNoTracking()
-            .Where(relationship => relationship.EmployeeId == employeeId);
+            .Where(relationship =>
+                relationship.EmployeeId != employeeId &&
+                reportingManagerIds.Contains(relationship.ManagerId) &&
+                relationship.Employee.Role == UserRole.Employee)
+            .Select(relationship => new ReportingGroupMemberResponse
+            {
+                EmployeeId = relationship.Employee.Id,
+                FirstName = relationship.Employee.FirstName,
+                LastName = relationship.Employee.LastName,
+                Email = relationship.Employee.Email,
+                Role = nameof(UserRole.Employee)
+            })
+            .Distinct();
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var members = await query
+            .OrderBy(member => member.FirstName)
+            .ThenBy(member => member.LastName)
+            .ThenBy(member => member.Email)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResponse<ReportingGroupMemberResponse>
+        {
+            Items = members,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalCount = totalCount,
+            TotalPages = (int)Math.Ceiling(totalCount / (double)request.PageSize)
+        };
+    }
+
+    private async Task<PagedResponse<ManagerEmployeeResponse>> GetManagersForUserAsync(
+        Guid userId,
+        UserRole expectedRole,
+        PagedRequest request,
+        CancellationToken cancellationToken)
+    {
+        await EnsureUserRoleAsync(
+            userId,
+            expectedRole,
+            $"The authenticated user is not a {expectedRole}.",
+            cancellationToken);
+
+        var query = _dbContext.ManagerEmployees
+            .AsNoTracking()
+            .Where(relationship => relationship.EmployeeId == userId);
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
@@ -192,7 +275,8 @@ public class ManagerEmployeeService : IManagerEmployeeService
                     UserId = relationship.Manager.Id,
                     Email = relationship.Manager.Email,
                     FirstName = relationship.Manager.FirstName,
-                    LastName = relationship.Manager.LastName
+                    LastName = relationship.Manager.LastName,
+                    Role = nameof(UserRole.Manager)
                 },
                 EmployeeId = relationship.EmployeeId,
                 Employee = new UserDirectoryResponse
@@ -200,7 +284,8 @@ public class ManagerEmployeeService : IManagerEmployeeService
                     UserId = relationship.Employee.Id,
                     Email = relationship.Employee.Email,
                     FirstName = relationship.Employee.FirstName,
-                    LastName = relationship.Employee.LastName
+                    LastName = relationship.Employee.LastName,
+                    Role = nameof(UserRole.Employee)
                 },
                 CreatedAt = relationship.CreatedAt
             })
@@ -230,7 +315,8 @@ public class ManagerEmployeeService : IManagerEmployeeService
                     UserId = relationship.Manager.Id,
                     Email = relationship.Manager.Email,
                     FirstName = relationship.Manager.FirstName,
-                    LastName = relationship.Manager.LastName
+                    LastName = relationship.Manager.LastName,
+                    Role = relationship.Manager.Role.ToString()
                 },
                 EmployeeId = relationship.EmployeeId,
                 Employee = new UserDirectoryResponse
@@ -238,30 +324,14 @@ public class ManagerEmployeeService : IManagerEmployeeService
                     UserId = relationship.Employee.Id,
                     Email = relationship.Employee.Email,
                     FirstName = relationship.Employee.FirstName,
-                    LastName = relationship.Employee.LastName
+                    LastName = relationship.Employee.LastName,
+                    Role = relationship.Employee.Role.ToString()
                 },
                 CreatedAt = relationship.CreatedAt
             })
             .ToListAsync(cancellationToken);
 
         return CreatePage(items, request.Page, totalCount, request.PageSize);
-    }
-
-    public async Task RemoveManagedEmployeeAsync(
-        Guid employeeId,
-        CancellationToken cancellationToken = default)
-    {
-        var managerId = _currentUserService.UserId;
-        await EnsureUserRoleAsync(
-            managerId,
-            UserRole.Manager,
-            "The authenticated user is not a Manager.",
-            cancellationToken);
-
-        await RemoveRelationshipAsync(
-            managerId,
-            employeeId,
-            cancellationToken);
     }
 
     public Task RemoveAsync(
@@ -340,7 +410,8 @@ public class ManagerEmployeeService : IManagerEmployeeService
             UserId = user.Id,
             Email = user.Email,
             FirstName = user.FirstName,
-            LastName = user.LastName
+            LastName = user.LastName,
+            Role = user.Role.ToString()
         };
     }
 
@@ -359,4 +430,10 @@ public class ManagerEmployeeService : IManagerEmployeeService
             TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
         };
     }
+
+    private static ConflictException CreateExistingAssignmentConflict(
+        bool sameManager) =>
+        new(sameManager
+            ? "The employee is already assigned to this Manager."
+            : "The employee already has a reporting Manager. Remove the existing relationship before assigning a new Manager.");
 }

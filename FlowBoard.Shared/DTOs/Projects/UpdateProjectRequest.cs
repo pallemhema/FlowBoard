@@ -12,6 +12,8 @@ public class UpdateProjectRequest : IValidatableObject
     [StringLength(1000)]
     public string? Description { get; set; }
 
+    public Guid? ManagerId { get; set; }
+
     [EnumDataType(typeof(ProjectStatus))]
     public ProjectStatus Status { get; set; }
 

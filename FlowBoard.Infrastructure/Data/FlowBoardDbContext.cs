@@ -20,6 +20,11 @@ public class FlowBoardDbContext : DbContext
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    public DbSet<UserInvitation> UserInvitations => Set<UserInvitation>();
+
+    public DbSet<UserRoleChangeAudit> UserRoleChangeAudits =>
+        Set<UserRoleChangeAudit>();
+
     public DbSet<Board> Boards => Set<Board>();
 
     public DbSet<BoardColumn> BoardColumns => Set<BoardColumn>();

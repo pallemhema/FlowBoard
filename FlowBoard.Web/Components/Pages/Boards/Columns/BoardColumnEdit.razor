@@ -1,8 +1,8 @@
 @page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/columns/{ColumnId:guid}/edit"
-
-@using FlowBoard.Shared.DTOs.BoardColumns
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 @inject IBoardColumnApiService BoardColumnApiService
+@inject IBoardApiService BoardApiService
 @inject NavigationManager Navigation
 
 <PageTitle>Edit Column</PageTitle>
@@ -26,6 +26,12 @@
     @if (isLoading)
     {
         <p>Loading column...</p>
+    }
+    else if (!canManageBoard)
+    {
+        <EmptyState
+            Title="Board management unavailable"
+            Message="Only authorized board managers can update columns. Approval requests are not currently available." />
     }
     else if (model is null)
     {
@@ -65,12 +71,27 @@
 
     private bool isSubmitting;
 
+    private bool canManageBoard;
+
     private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            var board = await BoardApiService.GetByIdAsync(BoardId);
+            if (board is null || board.WorkspaceId != WorkspaceId)
+            {
+                errorMessage = "The board could not be found in this workspace.";
+                return;
+            }
+
+            canManageBoard = board.CanManageBoard;
+            if (!canManageBoard)
+            {
+                return;
+            }
+
             var column =
                 await BoardColumnApiService.GetAsync(
                     BoardId,

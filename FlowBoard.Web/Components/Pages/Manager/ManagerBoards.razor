@@ -1,0 +1,200 @@
+@page "/manager/boards"
+@attribute [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
+@implements IDisposable
+
+@using System.Net.Http
+@using System.Text.Json
+
+@inject IBoardApiService BoardApiService
+@inject NavigationManager Navigation
+
+<PageTitle>My Boards | FlowBoard</PageTitle>
+
+<div class="page-shell manager-boards">
+    <PageHeader Title="My boards"
+                Eyebrow="Your work"
+                Description="Boards you are independently authorized to access." />
+
+    <div class="manager-boards-search">
+        <SearchBox Value="@search"
+                   ValueChanged="HandleSearchChangedAsync"
+                   Placeholder="Search boards..." />
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="manager-boards-loading" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <span>Loading your boards...</span>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <div class="manager-boards-error" role="alert">
+            <span>@errorMessage</span>
+            <button type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    @onclick="() => LoadBoardsAsync(page)">
+                Try again
+            </button>
+        </div>
+    }
+    else if (boardPage is { Items.Count: 0 })
+    {
+        <EmptyState Title="@(string.IsNullOrWhiteSpace(search) ? "No boards available" : "No boards match your search")"
+                    Message="@(string.IsNullOrWhiteSpace(search) ? "Boards you can access will appear here." : "Try changing your search.")" />
+    }
+    else if (boardPage is not null)
+    {
+        <div class="manager-boards-results-heading">
+            <p class="mb-0">@boardPage.TotalCount @(boardPage.TotalCount == 1 ? "board" : "boards")</p>
+        </div>
+
+        <section class="manager-board-grid" aria-label="Boards you can access">
+            @foreach (var board in boardPage.Items)
+            {
+                <article class="manager-board-item" @key="board.Id">
+                    <BoardCard Board="board" OnOpen="OpenBoard" />
+
+                    <dl class="manager-board-details">
+                        <div>
+                            <dt>Workspace</dt>
+                            <dd>@board.WorkspaceName</dd>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(board.ProjectName))
+                        {
+                            <div>
+                                <dt>Project</dt>
+                                <dd>@board.ProjectName</dd>
+                            </div>
+                        }
+                        <div>
+                            <dt>Purpose</dt>
+                            <dd>@GetPurposeLabel(board.Purpose)</dd>
+                        </div>
+                        <div>
+                            <dt>Your board role</dt>
+                            <dd>@(board.CurrentUserRole?.ToString() ?? "Access granted")</dd>
+                        </div>
+                    </dl>
+                </article>
+            }
+        </section>
+
+        <Pagination CurrentPage="page"
+                    TotalPages="boardPage.TotalPages"
+                    TotalCount="boardPage.TotalCount"
+                    PageChanged="LoadBoardsAsync" />
+    }
+</div>
+
+@code {
+    private const int PageSize = 12;
+
+    private PagedResponse<BoardResponse>? boardPage;
+    private string? search;
+    private string? errorMessage;
+    private bool isLoading;
+    private int page = 1;
+    private long loadVersion;
+    private CancellationTokenSource? activeLoadCts;
+    private CancellationTokenSource? searchDebounceCts;
+
+    protected override Task OnInitializedAsync() => LoadBoardsAsync(1);
+
+    private async Task HandleSearchChangedAsync(string? value)
+    {
+        search = value;
+        searchDebounceCts?.Cancel();
+        searchDebounceCts?.Dispose();
+        var debounceCts = searchDebounceCts = new CancellationTokenSource();
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(250), debounceCts.Token);
+            await LoadBoardsAsync(1);
+        }
+        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadBoardsAsync(int requestedPage)
+    {
+        page = requestedPage;
+        errorMessage = null;
+        activeLoadCts?.Cancel();
+        activeLoadCts?.Dispose();
+        var loadCts = activeLoadCts = new CancellationTokenSource();
+        var requestVersion = ++loadVersion;
+        isLoading = true;
+
+        try
+        {
+            var result = await BoardApiService.GetAsync(
+                new BoardQueryRequest
+                {
+                    Page = requestedPage,
+                    PageSize = PageSize,
+                    Search = search?.Trim()
+                },
+                loadCts.Token);
+
+            if (requestVersion != loadVersion)
+            {
+                return;
+            }
+
+            if (result is null)
+            {
+                boardPage = null;
+                errorMessage = "Unable to load your boards. Please try again.";
+                return;
+            }
+
+            boardPage = result;
+        }
+        catch (OperationCanceledException) when (loadCts.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                boardPage = null;
+                errorMessage = "The board service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                boardPage = null;
+                errorMessage = "The board service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoading = false;
+            }
+        }
+    }
+
+    private void OpenBoard(BoardResponse board) =>
+        Navigation.NavigateTo($"/workspaces/{board.WorkspaceId}/boards/{board.Id}");
+
+    private static string GetPurposeLabel(BoardPurpose purpose) =>
+        purpose == BoardPurpose.GeneralLearning
+            ? "General / Learning"
+            : "Project";
+
+    public void Dispose()
+    {
+        searchDebounceCts?.Cancel();
+        searchDebounceCts?.Dispose();
+        activeLoadCts?.Cancel();
+        activeLoadCts?.Dispose();
+    }
+}

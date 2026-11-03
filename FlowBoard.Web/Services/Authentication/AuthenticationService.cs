@@ -183,45 +183,6 @@ public class AuthenticationService :
         return true;
     }
     // ============================================================
-    // REGISTER
-    // ============================================================
-
-    public async Task<bool> RegisterAsync(
-        RegisterRequest request,
-        CancellationToken cancellationToken = default)
-    {
-        Console.WriteLine();
-        Console.WriteLine(
-            "========== AUTH SERVICE REGISTER ==========");
-
-        var response =
-            await _authApiService.RegisterAsync(
-                request,
-                cancellationToken);
-
-        if (response is null)
-        {
-            Console.WriteLine(
-                "AUTH SERVICE: Registration failed.");
-
-            _toastService.Error("Registration Failed");
-
-            return false;
-        }
-
-        Console.WriteLine(
-            "AUTH SERVICE: Registration successful.");
-
-        _toastService.Success("Registration Successfull");
-
-        SetAuthentication(response);
-
-        _initialized = true;
-
-        return true;
-    }
-
-    // ============================================================
     // SET AUTHENTICATION
     // ============================================================
 
@@ -312,15 +273,6 @@ public class AuthenticationService :
         var claims =
             token.Claims.ToList();
 
-        Console.WriteLine(
-            $"AUTH SERVICE: Claims received = {claims.Count}");
-
-        foreach (var claim in claims)
-        {
-            Console.WriteLine(
-                $"AUTH SERVICE CLAIM: {claim.Type} = {claim.Value}");
-        }
-
         // ============================================================
         // UPDATE AUTHENTICATION STATE
         // ============================================================
@@ -365,6 +317,13 @@ $"AUTH SERVICE INSTANCE = {_instanceId}");
                 Console.WriteLine(
                     "AUTH SERVICE: Refresh failed. No response.");
 
+                ClearAuthenticationState();
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(response.AccessToken))
+            {
+                ClearAuthenticationState();
                 return false;
             }
 
@@ -404,8 +363,7 @@ $"AUTH SERVICE INSTANCE = {_instanceId}");
 
         Console.WriteLine(
             $"AUTH SERVICE: Logout result = {success}");
-        _accessTokenState.ClearAccessToken();
-        _authenticationStateProvider.Logout();
+        ClearAuthenticationState();
 
         _initialized = true;
         _toastService.Success(
@@ -416,5 +374,11 @@ $"AUTH SERVICE INSTANCE = {_instanceId}");
 
         Console.WriteLine(
             "========== AUTH SERVICE LOGOUT COMPLETE ==========");
+    }
+
+    private void ClearAuthenticationState()
+    {
+        _accessTokenState.ClearAccessToken();
+        _authenticationStateProvider.Logout();
     }
 }

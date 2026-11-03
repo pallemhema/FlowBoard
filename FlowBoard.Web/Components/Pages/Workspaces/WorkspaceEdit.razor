@@ -1,10 +1,15 @@
 @page "/workspaces/{Id:guid}/edit"
+@page "/manager/workspaces/{Id:guid}/edit"
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOrManager)]
 
 @using FlowBoard.Shared.DTOs.Workspaces
 @using FlowBoard.Web.Models.Workspaces
+@using System.Text.Json
+@using System.Security.Claims
 
 @inject IWorkspaceApiService WorkspaceApiService
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Edit Workspace</PageTitle>
 
@@ -19,8 +24,8 @@
     else if (workspace is null)
     {
         <EmptyState
-            Title="Workspace not found"
-            Message="The workspace could not be found." />
+            Title="@(isUnauthorized ? "Workspace management unavailable" : "Workspace not found")"
+            Message="@(isUnauthorized ? "Only an administrator or the owning Manager can edit this workspace." : "The workspace could not be found.")" />
 
         <div class="mt-3">
 
@@ -36,8 +41,8 @@
     else
     {
         <Breadcrumbs>
-            <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
-            <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{Id}")">@workspace.Name</NavLink></li>
+            <li class="breadcrumb-item"><NavLink href="@WorkspaceRoot">Workspaces</NavLink></li>
+            <li class="breadcrumb-item"><NavLink href="@($"{WorkspaceRoot}/{Id}")">@workspace.Name</NavLink></li>
             <li class="breadcrumb-item active" aria-current="page">Edit</li>
         </Breadcrumbs>
 
@@ -77,6 +82,8 @@
 
     private bool isUpdating;
 
+    private bool isUnauthorized;
+
     private string? errorMessage;
 
     protected override async Task OnParametersSetAsync()
@@ -87,6 +94,7 @@
     private async Task LoadWorkspaceAsync()
     {
         isLoading = true;
+        isUnauthorized = false;
 
         try
         {
@@ -95,6 +103,18 @@
 
             if (workspace is null)
             {
+                return;
+            }
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var isAdmin = authState.User.IsInRole("Admin");
+            if (!isAdmin &&
+                (!Guid.TryParse(currentUserId, out var userId) ||
+                 workspace.OwnerId != userId))
+            {
+                workspace = null;
+                isUnauthorized = true;
                 return;
             }
 
@@ -123,7 +143,6 @@
 
         try
         {
-            // UI model → API request DTO
             var request =
                 new UpdateWorkspaceRequest
                 {
@@ -143,11 +162,15 @@
             }
 
             Navigation.NavigateTo(
-                $"/workspaces/{Id}");
+                $"{WorkspaceRoot}/{Id}");
         }
-            catch
+            catch (HttpRequestException)
             {
-                errorMessage = "Unable to update the workspace. Please try again.";
+                errorMessage = "The workspace service could not be reached.";
+            }
+            catch (JsonException)
+            {
+                errorMessage = "The workspace service returned an invalid response.";
             }
         finally
         {
@@ -158,6 +181,13 @@
     private void Cancel()
     {
         Navigation.NavigateTo(
-            $"/workspaces/{Id}");
+            $"{WorkspaceRoot}/{Id}");
     }
+
+    private string WorkspaceRoot =>
+        Navigation.Uri.Contains(
+            "/manager/workspaces/",
+            StringComparison.OrdinalIgnoreCase)
+            ? "/manager/workspaces"
+            : "/workspaces";
 }

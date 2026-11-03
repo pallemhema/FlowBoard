@@ -1,0 +1,280 @@
+@page "/manager/dashboard"
+
+@attribute [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
+
+@using System.Net.Http
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Common
+@using FlowBoard.Shared.DTOs.ManagerEmployees
+@using FlowBoard.Shared.DTOs.MyTasks
+@using FlowBoard.Shared.DTOs.Projects
+@using FlowBoard.Shared.DTOs.Teams
+@using FlowBoard.Shared.DTOs.Workspaces
+
+@inject IManagerEmployeeApiService ManagerEmployeeApiService
+@inject ITeamApiService TeamApiService
+@inject IWorkspaceApiService WorkspaceApiService
+@inject IProjectApiService ProjectApiService
+@inject IBoardApiService BoardApiService
+@inject ITaskApiService TaskApiService
+
+<PageTitle>Manager Dashboard | FlowBoard</PageTitle>
+
+<div class="page-shell manager-dashboard">
+
+    <PageHeader Title="Dashboard"
+                Eyebrow="Manager overview"
+                Description="A focused view of your direct reports, team memberships, accessible work, and assigned tasks." />
+
+    @if (isLoading)
+    {
+        <div class="manager-dashboard-loading" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <span>Loading your management overview…</span>
+        </div>
+    }
+
+    <section class="manager-stat-grid" aria-label="Manager overview statistics">
+
+        <DashboardStatCard Label="Direct reports"
+                           Icon="bi-people"
+                           IconTone="stat-tone-indigo"
+                           Value="@(employeesCount ?? 0)"
+                           IsLoading="@isLoading"
+                           IsUnavailable="@(employeesCount is null)"
+                           UnavailableReason="@employeesError" />
+
+        <DashboardStatCard Label="Teams"
+                           Icon="bi-diagram-3"
+                           IconTone="stat-tone-green"
+                           Value="@(teamsCount ?? 0)"
+                           IsLoading="@isLoading"
+                           IsUnavailable="@(teamsCount is null)"
+                           UnavailableReason="@teamsError" />
+
+        <DashboardStatCard Label="Accessible workspaces"
+                           Icon="bi-grid"
+                           IconTone="stat-tone-amber"
+                           Value="@(workspacesCount ?? 0)"
+                           IsLoading="@isLoading"
+                           IsUnavailable="@(workspacesCount is null)"
+                           UnavailableReason="@workspacesError" />
+
+        <DashboardStatCard Label="Accessible projects"
+                           Icon="bi-kanban"
+                           IconTone="stat-tone-violet"
+                           Value="@(projectsCount ?? 0)"
+                           IsLoading="@isLoading"
+                           IsUnavailable="@(projectsCount is null)"
+                           UnavailableReason="@projectsError" />
+
+        <DashboardStatCard Label="Accessible boards"
+                           Icon="bi-columns-gap"
+                           IconTone="stat-tone-blue"
+                           Value="@(boardsCount ?? 0)"
+                           IsLoading="@isLoading"
+                           IsUnavailable="@(boardsCount is null)"
+                           UnavailableReason="@boardsError" />
+
+        <DashboardStatCard Label="Tasks assigned to you"
+                           Icon="bi-check2-square"
+                           IconTone="stat-tone-indigo"
+                           Value="@(assignedTasksCount ?? 0)"
+                           IsLoading="@isLoading"
+                           IsUnavailable="@(assignedTasksCount is null)"
+                           UnavailableReason="@tasksError" />
+
+    </section>
+
+    <div class="manager-dashboard-content">
+
+        <section class="manager-dashboard-panel manager-task-panel"
+                 aria-labelledby="assigned-tasks-title">
+
+            <div class="manager-panel-heading">
+                <div>
+                    <p class="section-label mb-1">Your workload</p>
+                    <h2 id="assigned-tasks-title">Tasks assigned to you</h2>
+                </div>
+
+                <span class="manager-panel-icon manager-panel-icon-blue" aria-hidden="true">
+                    <i class="bi bi-check2-square"></i>
+                </span>
+            </div>
+
+        </section>
+
+    </div>
+
+</div>
+
+@code {
+    private const int PreviewPageSize = 1;
+
+    private int? employeesCount;
+    private int? teamsCount;
+    private int? workspacesCount;
+    private int? projectsCount;
+    private int? boardsCount;
+    private int? assignedTasksCount;
+
+    private string? employeesError;
+    private string? teamsError;
+    private string? workspacesError;
+    private string? projectsError;
+    private string? boardsError;
+    private string? tasksError;
+
+    private bool isLoading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.WhenAll(
+                LoadEmployeesAsync(),
+                LoadTeamsAsync(),
+                LoadWorkspacesAsync(),
+                LoadProjectsAsync(),
+                LoadBoardsAsync(),
+                LoadAssignedTasksAsync());
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        try
+        {
+            var result = await ManagerEmployeeApiService.GetManagedEmployeesAsync(
+                new PagedRequest { Page = 1, PageSize = PreviewPageSize });
+
+            employeesCount = result?.TotalCount;
+
+            if (result is null)
+                employeesError = "Direct reports are unavailable.";
+        }
+        catch (HttpRequestException)
+        {
+            employeesError = "The Manager-Employee service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            employeesError = "The Manager-Employee service returned an invalid response.";
+        }
+    }
+
+    private async Task LoadTeamsAsync()
+    {
+        try
+        {
+            var result = await TeamApiService.GetMineAsync(
+                new PagedSearchRequest { Page = 1, PageSize = PreviewPageSize });
+
+            teamsCount = result?.TotalCount;
+
+            if (result is null)
+                teamsError = "Team membership totals are unavailable.";
+        }
+        catch (HttpRequestException)
+        {
+            teamsError = "The team service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            teamsError = "The team service returned an invalid response.";
+        }
+    }
+
+    private async Task LoadWorkspacesAsync()
+    {
+        try
+        {
+            var result = await WorkspaceApiService.GetAsync(
+                new PagedSearchRequest { Page = 1, PageSize = PreviewPageSize });
+
+            workspacesCount = result?.TotalCount;
+
+            if (result is null)
+                workspacesError = "Accessible workspace totals are unavailable.";
+        }
+        catch (HttpRequestException)
+        {
+            workspacesError = "The workspace service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            workspacesError = "The workspace service returned an invalid response.";
+        }
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        try
+        {
+            var result = await ProjectApiService.GetMineAsync(
+                new ProjectQueryRequest { Page = 1, PageSize = PreviewPageSize });
+
+            projectsCount = result?.TotalCount;
+
+            if (result is null)
+                projectsError = "Accessible project totals are unavailable.";
+        }
+        catch (HttpRequestException)
+        {
+            projectsError = "The project service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            projectsError = "The project service returned an invalid response.";
+        }
+    }
+
+    private async Task LoadBoardsAsync()
+    {
+        try
+        {
+            var result = await BoardApiService.GetAsync(
+                new BoardQueryRequest { Page = 1, PageSize = PreviewPageSize });
+
+            boardsCount = result?.TotalCount;
+
+            if (result is null)
+                boardsError = "Accessible board totals are unavailable.";
+        }
+        catch (HttpRequestException)
+        {
+            boardsError = "The board service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            boardsError = "The board service returned an invalid response.";
+        }
+    }
+
+    private async Task LoadAssignedTasksAsync()
+    {
+        try
+        {
+            var result = await TaskApiService.GetMyTasksAsync(
+                new MyTasksQueryRequest { Page = 1, PageSize = PreviewPageSize });
+
+            assignedTasksCount = result?.TotalCount;
+
+            if (result is null)
+                tasksError = "Assigned task totals are unavailable.";
+        }
+        catch (HttpRequestException)
+        {
+            tasksError = "The task service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            tasksError = "The task service returned an invalid response.";
+        }
+    }
+}

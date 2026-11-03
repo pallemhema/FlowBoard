@@ -1,0 +1,88 @@
+<EditForm Model="@Model"
+          OnValidSubmit="@OnSubmit">
+
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+
+        <label class="form-label" for="board-name">
+            Board Name
+        </label>
+
+        <InputText
+            id="board-name"
+            @bind-Value="Model.Name"
+            class="form-control"
+            placeholder="Enter board name" />
+
+        <ValidationMessage
+            For="@(() => Model.Name)" />
+
+    </div>
+
+    <div class="mb-3">
+
+        <label class="form-label" for="board-description">
+            Description
+        </label>
+
+        <InputTextArea
+            id="board-description"
+            @bind-Value="Model.Description"
+            class="form-control"
+            placeholder="Enter board description" />
+
+        <ValidationMessage
+            For="@(() => Model.Description)" />
+
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <div class="alert alert-danger" role="alert">
+            @ErrorMessage
+        </div>
+    }
+
+    <button type="submit"
+            class="btn btn-primary"
+            disabled="@IsLoading">
+
+        @(IsLoading ? LoadingText : SubmitText)
+
+    </button>
+
+    <button type="button"
+            class="btn btn-secondary ms-2"
+            @onclick="OnCancel"
+            disabled="@IsLoading">
+
+        Cancel
+
+    </button>
+
+</EditForm>
+
+@code {
+
+    [Parameter, EditorRequired]
+    public BoardFormModel Model { get; set; } = null!;
+
+    [Parameter, EditorRequired]
+    public EventCallback OnSubmit { get; set; }
+
+    [Parameter, EditorRequired]
+    public EventCallback OnCancel { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public string SubmitText { get; set; } = "Save";
+
+    [Parameter]
+    public string LoadingText { get; set; } = "Saving...";
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+}

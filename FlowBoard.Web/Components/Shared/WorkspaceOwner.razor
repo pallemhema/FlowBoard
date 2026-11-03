@@ -1,0 +1,52 @@
+<div class="workspace-owner">
+    @if (string.IsNullOrWhiteSpace(OwnerName) &&
+         string.IsNullOrWhiteSpace(OwnerEmail))
+    {
+        <span class="workspace-owner-fallback">Owner information unavailable</span>
+    }
+    else
+    {
+        <UserAvatar FirstName="@GetAvatarFirstName()"
+                    LastName="@GetAvatarLastName()"
+                    SizeRem="@SizeRem" />
+        <span class="workspace-owner-details">
+            <strong class="workspace-owner-name">
+                @(string.IsNullOrWhiteSpace(OwnerName) ? "Name unavailable" : OwnerName)
+            </strong>
+            <span class="workspace-owner-email">
+                @(string.IsNullOrWhiteSpace(OwnerEmail) ? "Email unavailable" : OwnerEmail)
+            </span>
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? OwnerName { get; set; }
+
+    [Parameter]
+    public string? OwnerEmail { get; set; }
+
+    [Parameter]
+    public double SizeRem { get; set; } = 2;
+
+    private string GetAvatarFirstName()
+    {
+        var source = string.IsNullOrWhiteSpace(OwnerName)
+            ? OwnerEmail?.Split('@', 2)[0] ?? string.Empty
+            : OwnerName;
+        var parts = source.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length > 0 ? parts[0] : string.Empty;
+    }
+
+    private string GetAvatarLastName()
+    {
+        if (string.IsNullOrWhiteSpace(OwnerName))
+        {
+            return string.Empty;
+        }
+
+        var parts = OwnerName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return parts.Length > 1 ? parts[1] : string.Empty;
+    }
+}

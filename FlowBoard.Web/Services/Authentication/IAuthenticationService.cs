@@ -26,14 +26,6 @@ public interface IAuthenticationService
         CancellationToken cancellationToken = default);
 
     // ============================================================
-    // REGISTER
-    // ============================================================
-
-    Task<bool> RegisterAsync(
-        RegisterRequest request,
-        CancellationToken cancellationToken = default);
-
-    // ============================================================
     // REFRESH
     // ============================================================
 

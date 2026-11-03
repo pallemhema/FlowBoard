@@ -1,0 +1,181 @@
+@page "/activate"
+@rendermode InteractiveServer
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Web.Services.Api
+
+@inject IUserManagementApiService UserManagementApiService
+@inject NavigationManager Navigation
+
+<PageTitle>Set up your password | FlowBoard</PageTitle>
+
+<div class="auth-shell">
+    <section class="auth-panel">
+        <span class="brand-mark auth-brand-mark">
+            <i class="bi bi-kanban-fill" aria-hidden="true"></i>
+        </span>
+        <p class="section-label mt-4 mb-2">Account invitation</p>
+        <h1 class="page-title mb-2">Set up your password</h1>
+
+        @if (isLoadingToken)
+        {
+            <p class="page-subtitle mb-4" role="status">Checking invitation…</p>
+        }
+        else if (string.IsNullOrWhiteSpace(invitationToken))
+        {
+            <p class="page-subtitle mb-4">
+                This invitation link is missing or invalid. Ask your administrator for a new link.
+            </p>
+        }
+        else if (isActivated)
+        {
+            <div class="alert alert-success" role="status">
+                Password setup is complete. You can now sign in.
+            </div>
+            <NavLink class="btn btn-primary w-100" href="/login">Go to login</NavLink>
+        }
+        else
+        {
+            <p class="page-subtitle mb-4">
+                Choose a strong password to activate your FlowBoard account.
+            </p>
+
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger" role="alert">@errorMessage</div>
+            }
+
+            <EditForm Model="@passwordForm"
+                      OnValidSubmit="ActivateAsync"
+                      FormName="activate-invitation">
+                <DataAnnotationsValidator />
+
+                <div class="mb-3">
+                    <label class="form-label" for="activation-password">Password</label>
+                    <InputText id="activation-password"
+                               class="form-control"
+                               type="password"
+                               autocomplete="new-password"
+                               @bind-Value="passwordForm.Password" />
+                    <ValidationMessage For="@(() => passwordForm.Password)" />
+                    <small class="form-text text-muted">
+                        Use at least 8 characters with uppercase, lowercase, a number, and a symbol.
+                    </small>
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label" for="activation-confirm-password">Confirm password</label>
+                    <InputText id="activation-confirm-password"
+                               class="form-control"
+                               type="password"
+                               autocomplete="new-password"
+                               @bind-Value="passwordForm.ConfirmPassword" />
+                    <ValidationMessage For="@(() => passwordForm.ConfirmPassword)" />
+                </div>
+
+                <button type="submit"
+                        class="btn btn-primary w-100"
+                        disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                        <span>Setting up account…</span>
+                    }
+                    else
+                    {
+                        <span>Set password</span>
+                    }
+                </button>
+            </EditForm>
+        }
+    </section>
+</div>
+
+@code {
+    private string? invitationToken;
+    private string? errorMessage;
+    private bool isLoadingToken = true;
+    private bool isSubmitting;
+    private bool isActivated;
+    private readonly PasswordSetupForm passwordForm = new();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        invitationToken = ReadInvitationToken();
+        if (!string.IsNullOrWhiteSpace(invitationToken))
+        {
+            Navigation.NavigateTo("/activate", replace: true);
+        }
+
+        isLoadingToken = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string? ReadInvitationToken()
+    {
+        var fragment = Uri.UnescapeDataString(
+            new Uri(Navigation.Uri).Fragment.TrimStart('#'));
+        const string prefix = "token=";
+        return fragment.StartsWith(prefix, StringComparison.Ordinal)
+            ? fragment[prefix.Length..]
+            : null;
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (isSubmitting || string.IsNullOrWhiteSpace(invitationToken))
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = null;
+        try
+        {
+            await UserManagementApiService.ActivateInvitationAsync(
+                new ActivateInvitationRequest
+                {
+                    Token = invitationToken,
+                    Password = passwordForm.Password
+                });
+            isActivated = true;
+        }
+        catch (UserManagementApiException exception)
+        {
+            errorMessage = exception.Message;
+        }
+        catch (HttpRequestException)
+        {
+            errorMessage =
+                "The account service could not be reached. Your account was not activated.";
+        }
+        catch (JsonException)
+        {
+            errorMessage =
+                "The account service returned an invalid response. Ask your administrator to check the invitation.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private sealed class PasswordSetupForm
+    {
+        [Required]
+        [MinLength(8)]
+        [MaxLength(100)]
+        public string Password { get; set; } = string.Empty;
+
+        [Required]
+        [Compare(nameof(Password), ErrorMessage = "The passwords do not match.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

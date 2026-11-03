@@ -1,0 +1,1823 @@
+@page "/admin/boards"
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+@implements IDisposable
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Shared.DTOs.BoardMembers
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Common
+@using FlowBoard.Shared.DTOs.Projects
+@using FlowBoard.Shared.DTOs.Workspaces
+@using FlowBoard.Shared.Enums
+@using FlowBoard.Web.Services.Api
+
+@inject IBoardApiService BoardApiService
+@inject IBoardMemberApiService BoardMemberApiService
+@inject IWorkspaceApiService WorkspaceApiService
+@inject IProjectApiService ProjectApiService
+@inject IUserDirectoryApiService UserDirectoryApiService
+@inject ToastService ToastService
+
+<PageTitle>Board Management | FlowBoard</PageTitle>
+
+<div class="page-shell admin-boards-page">
+    <PageHeader Title="Board Management"
+                Eyebrow="Administration"
+                Description="Manage project boards and workspace-level General and Learning boards.">
+        <Actions>
+            <button type="button" class="btn btn-primary" @onclick="OpenCreateForm">
+                <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>Create board
+            </button>
+        </Actions>
+    </PageHeader>
+
+    @if (showBoardForm)
+    {
+        <section class="board-form-panel" aria-labelledby="board-form-title">
+            <div class="board-panel-heading">
+                <div>
+                    <p class="section-label mb-1">Board settings</p>
+                    <h2 id="board-form-title">@(isEditingBoard ? "Edit board" : "Create a board")</h2>
+                </div>
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close board form"
+                        disabled="@isSubmitting"
+                        @onclick="CloseBoardForm"></button>
+            </div>
+
+            <EditForm Model="@boardForm" OnValidSubmit="SaveBoardAsync" FormName="admin-board-form">
+                <DataAnnotationsValidator />
+                <div class="board-form-grid">
+                    <div class="mb-3">
+                        <label class="form-label" for="board-name">Board name</label>
+                        <InputText id="board-name" class="form-control" @bind-Value="boardForm.Name" placeholder="e.g. Product launch" />
+                        <ValidationMessage For="@(() => boardForm.Name)" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="board-purpose">Board purpose</label>
+                        <InputSelect id="board-purpose"
+                                     class="form-select"
+                                     @bind-Value="boardForm.Purpose"
+                                     @bind-Value:after="HandleFormPurposeChanged">
+                            <option value="@BoardPurpose.Project">Project board</option>
+                            <option value="@BoardPurpose.GeneralLearning">General/Learning board</option>
+                        </InputSelect>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="board-workspace">Workspace</label>
+                        @if (isEditingBoard)
+                        {
+                            <input id="board-workspace" class="form-control" value="@GetWorkspaceName(boardForm.WorkspaceId)" disabled />
+                            <div class="form-text">The board's workspace cannot be changed through the existing API.</div>
+                        }
+                        else
+                        {
+                            <InputSelect id="board-workspace"
+                                         class="form-select"
+                                         @bind-Value="boardForm.WorkspaceId"
+                                         @bind-Value:after="HandleFormWorkspaceChanged"
+                                         disabled="@isLoadingWorkspaces">
+                                <option value="@Guid.Empty">Select a workspace</option>
+                                @foreach (var workspace in workspaces)
+                                {
+                                    <option value="@workspace.Id">@workspace.Name</option>
+                                }
+                            </InputSelect>
+                            @if (workspaces.Count == 0 && !isLoadingWorkspaces && string.IsNullOrWhiteSpace(workspaceLoadError))
+                            {
+                                <div class="form-text">Create a workspace before adding a board.</div>
+                            }
+                        }
+                    </div>
+
+                    @if (boardForm.Purpose == BoardPurpose.Project)
+                    {
+                        <div class="mb-3">
+                            <label class="form-label" for="board-project">Project</label>
+                            <InputSelect id="board-project"
+                                         class="form-select"
+                                         @bind-Value="boardForm.ProjectId"
+                                         disabled="@(boardForm.WorkspaceId == Guid.Empty || isLoadingFormProjects)">
+                                <option value="">Select a project in this workspace</option>
+                                @foreach (var project in formProjects)
+                                {
+                                    <option value="@project.ProjectId">@project.Name</option>
+                                }
+                            </InputSelect>
+                            @if (isLoadingFormProjects)
+                            {
+                                <div class="form-text">Loading workspace projects…</div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(formProjectsError))
+                            {
+                                <div class="board-form-error" role="alert">@formProjectsError</div>
+                            }
+                            else if (boardForm.WorkspaceId != Guid.Empty && formProjects.Count == 0)
+                            {
+                                <div class="form-text">This workspace has no projects available for a project board.</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="board-form-note">
+                            <i class="bi bi-info-circle" aria-hidden="true"></i>
+                            <span>A General/Learning board belongs directly to its workspace and cannot be associated with a project.</span>
+                        </div>
+                    }
+
+                    <div class="mb-3 board-form-wide">
+                        <label class="form-label" for="board-description">Description <span class="text-muted fw-normal">(optional)</span></label>
+                        <InputTextArea id="board-description"
+                                       class="form-control board-description-input"
+                                       @bind-Value="boardForm.Description"
+                                       placeholder="Describe the board's purpose and scope." />
+                        <ValidationMessage For="@(() => boardForm.Description)" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(boardFormError))
+                {
+                    <div class="board-error compact" role="alert">@boardFormError</div>
+                }
+
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="button" class="btn btn-outline-secondary" disabled="@isSubmitting" @onclick="CloseBoardForm">Cancel</button>
+                    <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                        @(isSubmitting ? "Saving..." : isEditingBoard ? "Save changes" : "Create board")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    }
+
+    <section class="board-list-panel" aria-labelledby="board-list-title">
+        <div class="board-panel-heading">
+            <div>
+                <h2 id="board-list-title">Boards</h2>
+                <p>Board visibility and available actions remain subject to backend authorization.</p>
+            </div>
+            @if (UsesLocalFilters)
+            {
+                <span class="board-total-count">@localFilteredBoards.Count.ToString("N0") matching boards</span>
+            }
+            else if (boardPage is not null)
+            {
+                <span class="board-total-count">@boardPage.TotalCount.ToString("N0") boards</span>
+            }
+        </div>
+
+        <div class="board-filter-bar">
+            <div class="board-search">
+                <SearchBox Value="@boardSearch"
+                           ValueChanged="HandleBoardSearchChanged"
+                           Placeholder="Search board name or description" />
+            </div>
+            @if (!string.IsNullOrWhiteSpace(workspaceLoadError))
+            {
+                <div class="board-error compact" role="alert">
+                    <span>@workspaceLoadError</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadWorkspacesAsync">Retry workspaces</button>
+                </div>
+            }
+            <div class="board-filter">
+                <label class="visually-hidden" for="board-workspace-filter">Filter by workspace</label>
+                <InputSelect id="board-workspace-filter"
+                             class="form-select"
+                             @bind-Value="workspaceFilter"
+                             @bind-Value:after="HandleWorkspaceFilterChanged"
+                             disabled="@isLoadingWorkspaces">
+                    <option value="">All workspaces</option>
+                    @foreach (var workspace in workspaces)
+                    {
+                        <option value="@workspace.Id">@workspace.Name</option>
+                    }
+                </InputSelect>
+            </div>
+            <div class="board-filter">
+                <label class="visually-hidden" for="board-purpose-filter">Filter by board purpose</label>
+                <InputSelect id="board-purpose-filter"
+                             class="form-select"
+                             @bind-Value="purposeFilter"
+                             @bind-Value:after="HandlePurposeFilterChanged"
+                             disabled="@(!workspaceFilter.HasValue)">
+                    <option value="">All purposes</option>
+                    <option value="@BoardPurpose.Project">Project</option>
+                    <option value="@BoardPurpose.GeneralLearning">General/Learning</option>
+                </InputSelect>
+            </div>
+            <div class="board-filter">
+                <label class="visually-hidden" for="board-project-filter">Filter by project</label>
+                <InputSelect id="board-project-filter"
+                             class="form-select"
+                             @bind-Value="projectFilter"
+                             @bind-Value:after="HandleProjectFilterChanged"
+                             disabled="@(!workspaceFilter.HasValue || isLoadingFilterProjects)">
+                    <option value="">All projects</option>
+                    @foreach (var project in filterProjects)
+                    {
+                        <option value="@project.ProjectId">@project.Name</option>
+                    }
+                </InputSelect>
+            </div>
+            <button type="button"
+                    class="btn btn-outline-secondary board-clear-button"
+                    disabled="@(!HasActiveFilters)"
+                    @onclick="ClearFilters">
+                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Clear filters
+            </button>
+        </div>
+        @if (workspaceFilter.HasValue && (purposeFilter.HasValue || projectFilter.HasValue))
+        {
+            <p class="board-filter-note">Project and purpose filters search the selected workspace's matching boards; the API does not expose these filters directly.</p>
+        }
+        @if (workspaceFilter.HasValue && !string.IsNullOrWhiteSpace(filterProjectsError))
+        {
+            <div class="board-error compact" role="alert">
+                <span>@filterProjectsError</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadFilterProjectsAsync(workspaceFilter.Value)">Retry project filters</button>
+            </div>
+        }
+        @if (!string.IsNullOrWhiteSpace(boardListError))
+        {
+            <div class="board-error" role="alert">
+                <span>@boardListError</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadBoardsAsync(currentBoardPage)">Retry</button>
+            </div>
+        }
+        else if (isLoadingBoards)
+        {
+            <div class="board-loading" role="status" aria-live="polite">
+                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                <span>Loading boards…</span>
+            </div>
+        }
+        else if (UsesLocalFilters ? localFilteredBoards.Count == 0 : boardPage?.Items.Count == 0)
+        {
+            <EmptyState Title="@(HasActiveFilters ? "No matching boards" : "No boards yet")"
+                        Message="@(HasActiveFilters ? "Try changing or clearing the selected filters." : "Create a project board or a General/Learning board to get started.")" />
+        }
+        else if (UsesLocalFilters || boardPage is not null)
+        {
+            var visibleBoards = UsesLocalFilters
+                ? GetVisibleLocalBoards()
+                : boardPage?.Items ?? [];
+            <div class="board-table-wrap">
+                <table class="table board-table align-middle">
+                    <thead>
+                        <tr>
+                            <th scope="col">Board</th>
+                            <th scope="col">Purpose</th>
+                            <th scope="col">Workspace</th>
+                            <th scope="col">Project</th>
+                            <th scope="col">Owner</th>
+                            <th scope="col">Created</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var board in visibleBoards)
+                        {
+                            <tr @key="board.Id">
+                                <td>
+                                    <div class="board-name-cell">
+                                        <strong>@board.Name</strong>
+                                        <small>@(string.IsNullOrWhiteSpace(board.Description) ? "No description" : board.Description)</small>
+                                    </div>
+                                </td>
+                                <td><span class="board-purpose-badge">@GetPurposeLabel(board.Purpose)</span></td>
+                                <td>@GetWorkspaceName(board.WorkspaceId)</td>
+                                <td>
+                                    @if (board.ProjectId.HasValue)
+                                    {
+                                        <span class="board-id-value" title="@board.ProjectId">Project · @board.ProjectId.Value.ToString("N")[..8]</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">Workspace-level</span>
+                                    }
+                                </td>
+                                <td><span class="board-id-value" title="@board.OwnerId">@board.OwnerId.ToString("N")[..8]</span></td>
+                                <td>@board.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                                <td>
+                                    <div class="board-row-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenBoardDetailsAsync(board)">View</button>
+                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenEditForm(board)">Edit</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RequestBoardDeletion(board)">Delete</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="board-mobile-list">
+                @foreach (var board in visibleBoards)
+                {
+                    <article class="board-mobile-card" @key="board.Id">
+                        <div class="board-mobile-heading">
+                            <span class="board-mobile-icon" aria-hidden="true"><i class="bi bi-columns-gap"></i></span>
+                            <div class="board-mobile-title">
+                                <strong>@board.Name</strong>
+                                <span class="board-purpose-badge">@GetPurposeLabel(board.Purpose)</span>
+                            </div>
+                        </div>
+                        <p class="board-mobile-description">@(string.IsNullOrWhiteSpace(board.Description) ? "No description" : board.Description)</p>
+                        <dl class="board-mobile-meta">
+                            <div><dt>Workspace</dt><dd>@GetWorkspaceName(board.WorkspaceId)</dd></div>
+                            <div><dt>Project</dt><dd>@(board.ProjectId.HasValue ? board.ProjectId.Value.ToString("N")[..8] : "Workspace-level")</dd></div>
+                            <div><dt>Owner </dt><dd title="@board.OwnerId">@board.OwnerId.ToString("N")[..8]</dd></div>
+                            <div><dt>Created</dt><dd>@board.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div>
+                        </dl>
+                        <div class="board-mobile-actions">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenBoardDetailsAsync(board)">Details</button>
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenEditForm(board)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RequestBoardDeletion(board)">Delete</button>
+                        </div>
+                    </article>
+                }
+            </div>
+            @if (UsesLocalFilters)
+            {
+                <Pagination CurrentPage="@currentBoardPage"
+                            TotalPages="@LocalBoardTotalPages"
+                            TotalCount="@localFilteredBoards.Count"
+                            PageChanged="LoadBoardsAsync" />
+            }
+            else if (boardPage is not null)
+            {
+                <Pagination CurrentPage="@boardPage.Page"
+                            TotalPages="@boardPage.TotalPages"
+                            TotalCount="@boardPage.TotalCount"
+                            PageChanged="LoadBoardsAsync" />
+            }
+        }
+    </section>
+
+    @if (selectedBoard is not null)
+    {
+        <div class="board-modal-backdrop board-details-backdrop"
+             role="presentation"
+             @onclick="CloseBoardDetails">
+        <section class="board-details-panel board-details-dialog"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="board-details-title"
+                 @onclick:stopPropagation>
+            <div class="board-details-header">
+                <div>
+                    <p class="section-label mb-1">Board details</p>
+                    <h2 id="board-details-title">@selectedBoard.Name</h2>
+                    @if (boardDetails is not null)
+                    {
+                        <span class="board-purpose-badge">@GetPurposeLabel(boardDetails.Purpose)</span>
+                    }
+                </div>
+                <button type="button" class="btn-close" aria-label="Close board details" @onclick="CloseBoardDetails"></button>
+            </div>
+
+            @if (isLoadingBoardDetails)
+            {
+                <div class="board-loading" role="status">
+                    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                    <span>Loading board details…</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(boardDetailsError))
+            {
+                <div class="board-error" role="alert">
+                    <span>@boardDetailsError</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryBoardDetailsAsync">Retry</button>
+                </div>
+            }
+            else if (boardDetails is not null)
+            {
+                <div class="board-detail-grid">
+                    <div class="board-detail-item">
+                        <span>Workspace</span>
+                        <strong>@(boardWorkspace?.Name ?? "Workspace name unavailable")</strong>
+                    </div>
+                    <div class="board-detail-item">
+                        <span>Project</span>
+                        <strong>@(boardDetails.ProjectId.HasValue ? boardProject?.Name ?? $"Project ID: {boardDetails.ProjectId}" : "No project — workspace-level board")</strong>
+                    </div>
+                    <div class="board-detail-item">
+                        <span>Owner ID</span>
+                        <strong class="board-id-value">@boardDetails.OwnerId</strong>
+                    </div>
+                    <div class="board-detail-item">
+                        <span>Created</span>
+                        <strong>@boardDetails.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</strong>
+                    </div>
+                    @if (boardDetails.ModifiedAt.HasValue)
+                    {
+                        <div class="board-detail-item">
+                            <span>Last updated</span>
+                            <strong>@boardDetails.ModifiedAt.Value.ToLocalTime().ToString("MMM d, yyyy")</strong>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(boardDetails.Description))
+                    {
+                        <div class="board-detail-item board-detail-wide">
+                            <span>Description</span>
+                            <p>@boardDetails.Description</p>
+                        </div>
+                    }
+                </div>
+
+                <section class="board-members-section" aria-labelledby="board-members-title">
+                    <div class="board-subsection-heading">
+                        <div>
+                            <h3 id="board-members-title">Board membership</h3>
+                            <p>The Owner is set by the board record; member roles available here are Editor and Viewer.</p>
+                        </div>
+                        @if (boardMembersPage is not null)
+                        {
+                            <span class="board-detail-count">@boardMembersPage.TotalCount.ToString("N0") members</span>
+                        }
+                    </div>
+
+                    <div class="board-owner-row">
+                        <span class="board-member-avatar" aria-hidden="true"><i class="bi bi-person-fill"></i></span>
+                        <span class="board-member-copy">
+                            <strong>Board owner</strong>
+                            <small>@boardDetails.OwnerId</small>
+                        </span>
+                        <span class="board-role-pill owner-role">Owner</span>
+                    </div>
+
+                    <div class="board-member-add">
+                        <div class="board-subsection-heading compact-heading">
+                            <div>
+                                <h4>Add an existing user</h4>
+                                <p>Eligible accounts must already be members of this board's project or workspace, as required by the backend.</p>
+                            </div>
+                        </div>
+                        <div class="board-member-add-controls">
+                            <div class="board-member-search">
+                                <SearchBox Value="@memberCandidateSearch"
+                                           ValueChanged="HandleMemberCandidateSearchChanged"
+                                           Placeholder="Search users by name or email" />
+                            </div>
+                            <label class="visually-hidden" for="new-board-member-role">Role for new board member</label>
+                            <InputSelect id="new-board-member-role" class="form-select board-role-select" @bind-Value="newMemberRole">
+                                <option value="@BoardMemberRole.Viewer">Viewer</option>
+                                <option value="@BoardMemberRole.Editor">Editor</option>
+                            </InputSelect>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(memberCandidateError))
+                        {
+                            <div class="board-error compact" role="alert">
+                                <span>@memberCandidateError</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryMemberCandidatesAsync">Retry</button>
+                            </div>
+                        }
+                        else if (isLoadingMemberCandidates)
+                        {
+                            <div class="board-inline-loading" role="status">
+                                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching users…
+                            </div>
+                        }
+                        else if (memberCandidates is not null && memberCandidates.Items.Count == 0)
+                        {
+                            <EmptyState Title="No users found" Message="Try another name or email address." />
+                        }
+                        else if (memberCandidates is not null)
+                        {
+                            <div class="board-candidate-list">
+                                @foreach (var candidate in memberCandidates.Items)
+                                {
+                                    var isBoardOwner = candidate.UserId == boardDetails.OwnerId;
+                                    var isCurrentMember = boardMembersPage?.Items.Any(member => member.UserId == candidate.UserId) == true;
+                                    <div class="board-person-row" @key="candidate.UserId">
+                                        <UserAvatar FirstName="@candidate.FirstName" LastName="@candidate.LastName" />
+                                        <span class="board-member-copy">
+                                            <strong>@GetFullName(candidate.FirstName, candidate.LastName)</strong>
+                                            <small>@candidate.Email</small>
+                                        </span>
+                                        @if (isBoardOwner)
+                                        {
+                                            <span class="board-role-pill owner-role">Owner</span>
+                                        }
+                                        else if (isCurrentMember)
+                                        {
+                                            <span class="board-role-pill">Member</span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    disabled="@isSubmitting"
+                                                    @onclick="() => AddBoardMemberAsync(candidate)">
+                                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <Pagination CurrentPage="@memberCandidates.Page"
+                                        TotalPages="@memberCandidates.TotalPages"
+                                        TotalCount="@memberCandidates.TotalCount"
+                                        PageChanged="LoadMemberCandidatePageAsync" />
+                        }
+                        else if (string.IsNullOrWhiteSpace(memberCandidateSearch) || memberCandidateSearch.Trim().Length < 2)
+                        {
+                            <p class="board-help-text">Enter at least two characters to search the user directory. The directory does not include roles; the backend validates eligibility.</p>
+                        }
+                    </div>
+
+                    <div class="board-current-members-heading">
+                        <label class="form-label" for="board-member-search">Current members</label>
+                        <SearchBox Value="@memberSearch"
+                                   ValueChanged="HandleBoardMemberSearchChanged"
+                                   Placeholder="Filter members by name or email" />
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(boardMembersError))
+                    {
+                        <div class="board-error compact" role="alert">
+                            <span>@boardMembersError</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryBoardMembersAsync">Retry</button>
+                        </div>
+                    }
+                    else if (isLoadingBoardMembers)
+                    {
+                        <div class="board-inline-loading" role="status">
+                            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading board members…
+                        </div>
+                    }
+                    else if (boardMembersPage is not null && boardMembersPage.Items.Count == 0)
+                    {
+                        <EmptyState Title="@(boardMembersPage.TotalCount == 0 ? "No board members" : "No matching members")"
+                                    Message="@(boardMembersPage.TotalCount == 0 ? "The owner is listed separately. Add eligible project or workspace members when needed." : "Try another name or email address.")" />
+                    }
+                    else if (boardMembersPage is not null)
+                    {
+                        <div class="board-current-member-list">
+                            @foreach (var member in boardMembersPage.Items)
+                            {
+                                <div class="board-person-row" @key="member.UserId">
+                                    <UserAvatar FirstName="@member.FirstName" LastName="@member.LastName" />
+                                    <span class="board-member-copy">
+                                        <strong>@GetFullName(member.FirstName, member.LastName)</strong>
+                                        <small>@member.Email</small>
+                                    </span>
+                                    <label class="visually-hidden" for="@($"member-role-{member.UserId}")">Role for @GetFullName(member.FirstName, member.LastName)</label>
+                                    <select id="@($"member-role-{member.UserId}")"
+                                            class="form-select form-select-sm board-role-select"
+                                            value="@member.Role"
+                                            disabled="@isSubmitting"
+                                            @onchange="args => UpdateBoardMemberRoleAsync(member, args)">
+                                        <option value="@BoardMemberRole.Viewer">Viewer</option>
+                                        <option value="@BoardMemberRole.Editor">Editor</option>
+                                    </select>
+                                    @if (pendingRemovalUserId == member.UserId)
+                                    {
+                                        <span class="board-remove-confirm">
+                                            <span>Remove?</span>
+                                            <button type="button" class="btn btn-sm btn-danger" disabled="@isSubmitting" @onclick="() => RemoveBoardMemberAsync(member)">Confirm</button>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@isSubmitting" @onclick="CancelMemberRemoval">Cancel</button>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-danger"
+                                                disabled="@isSubmitting"
+                                                aria-label="@($"Remove {member.FirstName} {member.LastName} from board")"
+                                                @onclick="() => RequestMemberRemoval(member.UserId)">Remove</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <Pagination CurrentPage="@boardMembersPage.Page"
+                                    TotalPages="@boardMembersPage.TotalPages"
+                                    TotalCount="@boardMembersPage.TotalCount"
+                                    PageChanged="LoadBoardMemberPageAsync" />
+                    }
+                    @if (!string.IsNullOrWhiteSpace(memberOperationError))
+                    {
+                        <div class="board-error compact mt-2" role="alert">@memberOperationError</div>
+                    }
+                </section>
+            }
+        </section>
+        </div>
+    }
+
+    @if (boardPendingDelete is not null)
+    {
+        <div class="board-modal-backdrop" role="presentation">
+            <section class="board-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="board-delete-title">
+                <div class="board-dialog-icon"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></div>
+                <h2 id="board-delete-title">Delete @boardPendingDelete.Name?</h2>
+                <p>Boards with columns or members cannot be deleted. Resolve those dependencies first; this action will not remove them automatically.</p>
+                @if (!string.IsNullOrWhiteSpace(deleteBoardError))
+                {
+                    <div class="board-error compact" role="alert">@deleteBoardError</div>
+                }
+                <div class="d-flex justify-content-end gap-2 mt-4">
+                    <button type="button" class="btn btn-outline-secondary" disabled="@isSubmitting" @onclick="CancelBoardDeletion">Cancel</button>
+                    <button type="button" class="btn btn-danger" disabled="@isSubmitting" @onclick="DeleteBoardAsync">
+                        @(isSubmitting ? "Deleting..." : "Delete board")
+                    </button>
+                </div>
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private const int BoardPageSize = 10;
+    private const int ResourcePageSize = 100;
+    private const int DirectoryPageSize = 10;
+    private const int MemberPageSize = 10;
+
+    private PagedResponse<BoardResponse>? boardPage;
+    private List<BoardResponse> localFilteredBoards = [];
+    private List<BoardResponse> workspaceBoardCache = [];
+    private List<WorkspaceResponse> workspaces = [];
+    private List<ProjectResponse> filterProjects = [];
+    private List<ProjectResponse> formProjects = [];
+    private BoardResponse? selectedBoard;
+    private BoardResponse? boardDetails;
+    private BoardResponse? boardPendingDelete;
+    private WorkspaceResponse? boardWorkspace;
+    private ProjectResponse? boardProject;
+    private PagedResponse<BoardMemberResponse>? boardMembersPage;
+    private PagedResponse<UserDirectoryResponse>? memberCandidates;
+    private BoardFormModel boardForm = new();
+    private string? boardSearch;
+    private Guid? workspaceFilter;
+    private Guid? projectFilter;
+    private BoardPurpose? purposeFilter;
+    private string? memberSearch;
+    private string? memberCandidateSearch;
+    private string? boardListError;
+    private string? workspaceLoadError;
+    private string? formProjectsError;
+    private string? filterProjectsError;
+    private string? boardFormError;
+    private string? boardDetailsError;
+    private string? boardMembersError;
+    private string? memberCandidateError;
+    private string? memberOperationError;
+    private string? deleteBoardError;
+    private BoardMemberRole newMemberRole = BoardMemberRole.Viewer;
+    private Guid? pendingRemovalUserId;
+    private Guid? workspaceBoardCacheWorkspaceId;
+    private string? workspaceBoardCacheSearch;
+    private int currentBoardPage = 1;
+    private int currentMemberPage = 1;
+    private bool isLoadingBoards = true;
+    private bool isLoadingWorkspaces;
+    private bool isLoadingFilterProjects;
+    private bool isLoadingFormProjects;
+    private bool isLoadingBoardDetails;
+    private bool isLoadingBoardMembers;
+    private bool isLoadingMemberCandidates;
+    private bool isSubmitting;
+    private bool showBoardForm;
+    private bool isEditingBoard;
+    private long boardListRequestVersion;
+    private long formProjectRequestVersion;
+    private long filterProjectRequestVersion;
+    private long boardDetailsVersion;
+    private long boardMemberRequestVersion;
+    private long memberCandidateRequestVersion;
+    private CancellationTokenSource? boardSearchDebounce;
+    private CancellationTokenSource? memberSearchDebounce;
+    private CancellationTokenSource? memberCandidateSearchDebounce;
+
+    private bool UsesLocalFilters =>
+        workspaceFilter.HasValue &&
+        (purposeFilter.HasValue || projectFilter.HasValue);
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(boardSearch) ||
+        workspaceFilter.HasValue ||
+        projectFilter.HasValue ||
+        purposeFilter.HasValue;
+
+    private int LocalBoardTotalPages =>
+        Math.Max(1, (int)Math.Ceiling(localFilteredBoards.Count / (double)BoardPageSize));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadWorkspacesAsync(), LoadBoardsAsync(1));
+    }
+
+    private async Task LoadWorkspacesAsync()
+    {
+        isLoadingWorkspaces = true;
+        workspaceLoadError = null;
+        try
+        {
+            var firstPage = await WorkspaceApiService.GetAsync(
+                new PagedSearchRequest { Page = 1, PageSize = ResourcePageSize });
+            if (firstPage is null)
+            {
+                workspaceLoadError = "Workspace options could not be loaded. Confirm your access and retry.";
+                return;
+            }
+
+            var results = firstPage.Items.ToList();
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await WorkspaceApiService.GetAsync(
+                    new PagedSearchRequest { Page = page, PageSize = ResourcePageSize });
+                if (response is null)
+                {
+                    workspaceLoadError = "Workspace options could not be fully loaded. Partial results are withheld.";
+                    return;
+                }
+
+                results.AddRange(response.Items);
+            }
+
+            workspaces = results;
+        }
+        catch (HttpRequestException)
+        {
+            workspaceLoadError = "The workspace service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            workspaceLoadError = "The workspace service returned an invalid response.";
+        }
+        finally
+        {
+            isLoadingWorkspaces = false;
+        }
+    }
+
+    private async Task LoadBoardsAsync(int page)
+    {
+        var requestVersion = ++boardListRequestVersion;
+        currentBoardPage = page;
+        isLoadingBoards = true;
+        boardListError = null;
+        try
+        {
+            if (UsesLocalFilters)
+            {
+                await LoadWorkspaceFilteredBoardsAsync(requestVersion);
+                return;
+            }
+
+            var response = await BoardApiService.GetAsync(
+                new BoardQueryRequest
+                {
+                    Page = page,
+                    PageSize = BoardPageSize,
+                    Search = NormalizeSearch(boardSearch),
+                    WorkspaceId = workspaceFilter
+                });
+            if (requestVersion != boardListRequestVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                boardPage = null;
+                boardListError = "Boards could not be loaded. Confirm your access and retry.";
+                return;
+            }
+
+            boardPage = response;
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == boardListRequestVersion)
+            {
+                boardPage = null;
+                boardListError = "The board service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == boardListRequestVersion)
+            {
+                boardPage = null;
+                boardListError = "The board service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == boardListRequestVersion)
+            {
+                isLoadingBoards = false;
+            }
+        }
+    }
+
+    private async Task LoadWorkspaceFilteredBoardsAsync(long requestVersion)
+    {
+        if (!workspaceFilter.HasValue)
+        {
+            localFilteredBoards = [];
+            return;
+        }
+
+        var normalizedSearch = NormalizeSearch(boardSearch);
+        if (workspaceBoardCacheWorkspaceId != workspaceFilter ||
+            !string.Equals(workspaceBoardCacheSearch, normalizedSearch, StringComparison.Ordinal))
+        {
+            var firstPage = await BoardApiService.GetAsync(
+                new BoardQueryRequest
+                {
+                    WorkspaceId = workspaceFilter,
+                    Search = normalizedSearch,
+                    Page = 1,
+                    PageSize = ResourcePageSize
+                });
+            if (requestVersion != boardListRequestVersion)
+            {
+                return;
+            }
+
+            if (firstPage is null)
+            {
+                localFilteredBoards = [];
+                boardListError = "Boards for the selected workspace could not be loaded.";
+                return;
+            }
+
+            var results = firstPage.Items.ToList();
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await BoardApiService.GetAsync(
+                    new BoardQueryRequest
+                    {
+                        WorkspaceId = workspaceFilter,
+                        Search = normalizedSearch,
+                        Page = page,
+                        PageSize = ResourcePageSize
+                    });
+                if (requestVersion != boardListRequestVersion)
+                {
+                    return;
+                }
+
+                if (response is null)
+                {
+                    localFilteredBoards = [];
+                    boardListError = "The selected workspace's board list could not be fully loaded. Partial results are withheld.";
+                    return;
+                }
+
+                results.AddRange(response.Items);
+            }
+
+            workspaceBoardCache = results;
+            workspaceBoardCacheWorkspaceId = workspaceFilter;
+            workspaceBoardCacheSearch = normalizedSearch;
+        }
+
+        localFilteredBoards = workspaceBoardCache
+            .Where(board =>
+                (!purposeFilter.HasValue || board.Purpose == purposeFilter.Value) &&
+                (!projectFilter.HasValue || board.ProjectId == projectFilter.Value))
+            .OrderBy(board => board.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        currentBoardPage = Math.Clamp(currentBoardPage, 1, LocalBoardTotalPages);
+    }
+
+    private async Task HandleBoardSearchChanged(string? value)
+    {
+        boardSearch = value?.Trim();
+        await DebounceBoardSearchAsync();
+    }
+
+    private async Task DebounceBoardSearchAsync()
+    {
+        boardSearchDebounce?.Cancel();
+        boardSearchDebounce?.Dispose();
+        boardSearchDebounce = new CancellationTokenSource();
+        var token = boardSearchDebounce.Token;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadBoardsAsync(1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task HandleWorkspaceFilterChanged()
+    {
+        projectFilter = null;
+        filterProjects = [];
+        filterProjectsError = null;
+        currentBoardPage = 1;
+        if (workspaceFilter.HasValue)
+        {
+            await LoadFilterProjectsAsync(workspaceFilter.Value);
+        }
+        else
+        {
+            filterProjectRequestVersion++;
+            isLoadingFilterProjects = false;
+        }
+
+        await LoadBoardsAsync(1);
+    }
+
+    private async Task HandleProjectFilterChanged()
+    {
+        currentBoardPage = 1;
+        await LoadBoardsAsync(1);
+    }
+
+    private async Task HandlePurposeFilterChanged()
+    {
+        currentBoardPage = 1;
+        await LoadBoardsAsync(1);
+    }
+
+    private async Task LoadFilterProjectsAsync(Guid workspaceId)
+    {
+        var requestVersion = ++filterProjectRequestVersion;
+        isLoadingFilterProjects = true;
+        filterProjectsError = null;
+        try
+        {
+            var result = await FetchWorkspaceProjectsAsync(workspaceId);
+            if (requestVersion != filterProjectRequestVersion)
+            {
+                return;
+            }
+
+            if (result is null)
+            {
+                filterProjects = [];
+                filterProjectsError = "Projects for the selected workspace could not be loaded.";
+                return;
+            }
+
+            filterProjects = result;
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == filterProjectRequestVersion)
+            {
+                filterProjects = [];
+                filterProjectsError = "The project service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == filterProjectRequestVersion)
+            {
+                filterProjects = [];
+                filterProjectsError = "The project service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == filterProjectRequestVersion)
+            {
+                isLoadingFilterProjects = false;
+            }
+        }
+    }
+
+    private async Task<List<ProjectResponse>?> FetchWorkspaceProjectsAsync(Guid workspaceId)
+    {
+        var firstPage = await ProjectApiService.GetAsync(
+            new ProjectQueryRequest
+            {
+                WorkspaceId = workspaceId,
+                Page = 1,
+                PageSize = ResourcePageSize
+            });
+        if (firstPage is null)
+        {
+            return null;
+        }
+
+        var results = firstPage.Items.ToList();
+        for (var page = 2; page <= firstPage.TotalPages; page++)
+        {
+            var response = await ProjectApiService.GetAsync(
+                new ProjectQueryRequest
+                {
+                    WorkspaceId = workspaceId,
+                    Page = page,
+                    PageSize = ResourcePageSize
+                });
+            if (response is null)
+            {
+                return null;
+            }
+
+            results.AddRange(response.Items);
+        }
+
+        return results;
+    }
+
+    private async Task HandleFormWorkspaceChanged()
+    {
+        formProjectRequestVersion++;
+        boardForm.ProjectId = null;
+        formProjects = [];
+        formProjectsError = null;
+        if (boardForm.WorkspaceId != Guid.Empty)
+        {
+            await LoadFormProjectsAsync(boardForm.WorkspaceId);
+        }
+        else
+        {
+            isLoadingFormProjects = false;
+        }
+    }
+
+    private Task HandleFormPurposeChanged()
+    {
+        if (boardForm.Purpose == BoardPurpose.GeneralLearning)
+        {
+            boardForm.ProjectId = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadFormProjectsAsync(Guid workspaceId)
+    {
+        var requestVersion = ++formProjectRequestVersion;
+        isLoadingFormProjects = true;
+        formProjectsError = null;
+        try
+        {
+            var result = await FetchWorkspaceProjectsAsync(workspaceId);
+            if (requestVersion != formProjectRequestVersion)
+            {
+                return;
+            }
+
+            if (result is null)
+            {
+                formProjects = [];
+                formProjectsError = "Projects for this workspace could not be loaded. Retry by selecting the workspace again.";
+                return;
+            }
+
+            formProjects = result;
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == formProjectRequestVersion)
+            {
+                formProjects = [];
+                formProjectsError = "The project service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == formProjectRequestVersion)
+            {
+                formProjects = [];
+                formProjectsError = "The project service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == formProjectRequestVersion)
+            {
+                isLoadingFormProjects = false;
+            }
+        }
+    }
+
+    private async Task OpenCreateForm()
+    {
+        formProjectRequestVersion++;
+        isLoadingFormProjects = false;
+        selectedEditBoard = null;
+        isEditingBoard = false;
+        showBoardForm = true;
+        boardFormError = null;
+        formProjectsError = null;
+        formProjects = [];
+        boardForm = new BoardFormModel();
+        if (workspaces.Count == 0 && !isLoadingWorkspaces)
+        {
+            await LoadWorkspacesAsync();
+        }
+    }
+
+    private async Task OpenEditForm(BoardResponse board)
+    {
+        selectedEditBoard = board;
+        CloseBoardDetails();
+        boardFormError = null;
+        formProjectsError = null;
+        isEditingBoard = true;
+        showBoardForm = true;
+        boardForm = new BoardFormModel
+        {
+            Name = board.Name,
+            Description = board.Description,
+            WorkspaceId = board.WorkspaceId,
+            ProjectId = board.ProjectId,
+            Purpose = board.Purpose
+        };
+        formProjects = [];
+        await LoadFormProjectsAsync(board.WorkspaceId);
+    }
+
+    private void CloseBoardForm()
+    {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        showBoardForm = false;
+        formProjectRequestVersion++;
+        isLoadingFormProjects = false;
+        boardFormError = null;
+    }
+
+    private async Task SaveBoardAsync()
+    {
+        boardFormError = null;
+        if (boardForm.WorkspaceId == Guid.Empty ||
+            !workspaces.Any(workspace => workspace.Id == boardForm.WorkspaceId))
+        {
+            boardFormError = "Select an existing workspace.";
+            return;
+        }
+
+        var keepsExistingProjectAssociation =
+            isEditingBoard &&
+            selectedEditBoard is not null &&
+            selectedEditBoard.WorkspaceId == boardForm.WorkspaceId &&
+            selectedEditBoard.Purpose == boardForm.Purpose &&
+            selectedEditBoard.ProjectId == boardForm.ProjectId;
+        if (boardForm.Purpose == BoardPurpose.Project &&
+            (!boardForm.ProjectId.HasValue ||
+             (!keepsExistingProjectAssociation &&
+              !formProjects.Any(project =>
+                  project.ProjectId == boardForm.ProjectId &&
+                  project.WorkspaceId == boardForm.WorkspaceId))))
+        {
+            boardFormError = "Select a project that belongs to the selected workspace.";
+            return;
+        }
+
+        if (boardForm.Purpose == BoardPurpose.GeneralLearning && boardForm.ProjectId.HasValue)
+        {
+            boardFormError = "General/Learning boards cannot be associated with a project.";
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            if (isEditingBoard)
+            {
+                await UpdateBoardAsync();
+            }
+            else
+            {
+                await CreateBoardAsync();
+            }
+        }
+        catch (HttpRequestException)
+        {
+            boardFormError = "The board service could not be reached. The operation was not confirmed.";
+        }
+        catch (JsonException)
+        {
+            boardFormError = "The board service returned an invalid response. Refresh the board list to confirm the result.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task CreateBoardAsync()
+    {
+        var createdBoard = await BoardApiService.CreateAsync(
+            new CreateBoardRequest
+            {
+                Name = boardForm.Name.Trim(),
+                Description = boardForm.Description,
+                WorkspaceId = boardForm.WorkspaceId,
+                ProjectId = boardForm.Purpose == BoardPurpose.Project ? boardForm.ProjectId : null,
+                Purpose = boardForm.Purpose
+            });
+        if (createdBoard is null)
+        {
+            boardFormError = "The board was not created. Review the API error notification and confirm the selected workspace and project.";
+            return;
+        }
+
+        InvalidateWorkspaceBoardCache();
+        showBoardForm = false;
+        await LoadBoardsAsync(1);
+    }
+
+    private async Task UpdateBoardAsync()
+    {
+        if (selectedEditBoard is null)
+        {
+            boardFormError = "Select a board to update.";
+            return;
+        }
+
+        var updated = await BoardApiService.UpdateAsync(
+            selectedEditBoard.Id,
+            new UpdateBoardRequest
+            {
+                Name = boardForm.Name.Trim(),
+                Description = boardForm.Description,
+                Purpose = boardForm.Purpose,
+                ProjectId = boardForm.Purpose == BoardPurpose.Project ? boardForm.ProjectId : null
+            });
+        if (!updated)
+        {
+            boardFormError = "The board was not updated. Review the API error notification and check the board's dependencies and hierarchy.";
+            return;
+        }
+
+        var boardId = selectedEditBoard.Id;
+        InvalidateWorkspaceBoardCache();
+        showBoardForm = false;
+        selectedEditBoard = null;
+        await LoadBoardsAsync(1);
+        await OpenBoardDetailsAsync(boardId);
+    }
+
+    private BoardResponse? selectedEditBoard;
+
+    private async Task OpenBoardDetailsAsync(BoardResponse board)
+    {
+        selectedBoard = board;
+        await LoadBoardDetailsAsync(board.Id);
+    }
+
+    private async Task OpenBoardDetailsAsync(Guid boardId)
+    {
+        var board = await BoardApiService.GetByIdAsync(boardId);
+        if (board is null)
+        {
+            ToastService.Error("Updated board details could not be loaded. Refresh the board list and try again.");
+            return;
+        }
+
+        await OpenBoardDetailsAsync(board);
+    }
+
+    private async Task LoadBoardDetailsAsync(Guid boardId)
+    {
+        var version = ++boardDetailsVersion;
+        selectedBoard ??= localFilteredBoards.Concat(boardPage?.Items ?? [])
+            .FirstOrDefault(board => board.Id == boardId);
+        boardDetails = null;
+        boardWorkspace = null;
+        boardProject = null;
+        boardDetailsError = null;
+        boardMembersPage = null;
+        boardMembersError = null;
+        memberOperationError = null;
+        memberCandidates = null;
+        memberCandidateError = null;
+        memberCandidateSearch = null;
+        memberSearch = null;
+        currentMemberPage = 1;
+        pendingRemovalUserId = null;
+        memberCandidateRequestVersion++;
+        memberCandidateSearchDebounce?.Cancel();
+        memberCandidateSearchDebounce?.Dispose();
+        memberCandidateSearchDebounce = null;
+        memberSearchDebounce?.Cancel();
+        memberSearchDebounce?.Dispose();
+        memberSearchDebounce = null;
+        isLoadingBoardDetails = true;
+        await Task.WhenAll(
+            LoadBoardDetailsRecordAsync(version, boardId),
+            LoadBoardMembersAsync(version, boardId, 1));
+    }
+
+    private async Task LoadBoardDetailsRecordAsync(long version, Guid boardId)
+    {
+        try
+        {
+            var board = await BoardApiService.GetByIdAsync(boardId);
+            if (version != boardDetailsVersion)
+            {
+                return;
+            }
+
+            if (board is null)
+            {
+                boardDetailsError = "Board details could not be loaded. Confirm your access and retry.";
+                return;
+            }
+
+            boardDetails = board;
+            selectedBoard = board;
+            var workspaceTask = WorkspaceApiService.GetByIdAsync(board.WorkspaceId);
+            var projectTask = board.ProjectId.HasValue
+                ? ProjectApiService.GetByIdAsync(board.ProjectId.Value)
+                : Task.FromResult<ProjectResponse?>(null);
+            await Task.WhenAll(workspaceTask, projectTask);
+            if (version != boardDetailsVersion)
+            {
+                return;
+            }
+
+            boardWorkspace = await workspaceTask;
+            boardProject = await projectTask;
+        }
+        catch (HttpRequestException)
+        {
+            if (version == boardDetailsVersion)
+            {
+                boardDetailsError = "The board details service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == boardDetailsVersion)
+            {
+                boardDetailsError = "The board details service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == boardDetailsVersion)
+            {
+                isLoadingBoardDetails = false;
+            }
+        }
+    }
+
+    private Task RetryBoardDetailsAsync() =>
+        selectedBoard is null
+            ? Task.CompletedTask
+            : LoadBoardDetailsAsync(selectedBoard.Id);
+
+    private void CloseBoardDetails()
+    {
+        boardDetailsVersion++;
+        boardMemberRequestVersion++;
+        memberCandidateRequestVersion++;
+        selectedBoard = null;
+        boardDetails = null;
+        boardWorkspace = null;
+        boardProject = null;
+        boardMembersPage = null;
+        memberCandidates = null;
+        pendingRemovalUserId = null;
+        memberCandidateSearch = null;
+        memberSearch = null;
+        memberCandidateSearchDebounce?.Cancel();
+        memberCandidateSearchDebounce?.Dispose();
+        memberCandidateSearchDebounce = null;
+        memberSearchDebounce?.Cancel();
+        memberSearchDebounce?.Dispose();
+        memberSearchDebounce = null;
+    }
+
+    private async Task LoadBoardMembersAsync(long detailsVersion, Guid boardId, int page)
+    {
+        var requestVersion = ++boardMemberRequestVersion;
+        currentMemberPage = page;
+        isLoadingBoardMembers = true;
+        boardMembersError = null;
+        try
+        {
+            var response = await BoardMemberApiService.GetAsync(
+                boardId,
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = MemberPageSize,
+                    Search = NormalizeSearch(memberSearch)
+                });
+            if (detailsVersion != boardDetailsVersion ||
+                requestVersion != boardMemberRequestVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                boardMembersPage = null;
+                boardMembersError = "Board members could not be loaded. Confirm your access and retry.";
+                return;
+            }
+
+            boardMembersPage = response;
+        }
+        catch (HttpRequestException)
+        {
+            if (detailsVersion == boardDetailsVersion &&
+                requestVersion == boardMemberRequestVersion)
+            {
+                boardMembersPage = null;
+                boardMembersError = "The board member service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (detailsVersion == boardDetailsVersion &&
+                requestVersion == boardMemberRequestVersion)
+            {
+                boardMembersPage = null;
+                boardMembersError = "The board member service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (detailsVersion == boardDetailsVersion &&
+                requestVersion == boardMemberRequestVersion)
+            {
+                isLoadingBoardMembers = false;
+            }
+        }
+    }
+
+    private Task RetryBoardMembersAsync() =>
+        selectedBoard is null
+            ? Task.CompletedTask
+            : LoadBoardMembersAsync(boardDetailsVersion, selectedBoard.Id, currentMemberPage);
+
+    private Task LoadBoardMemberPageAsync(int page) =>
+        selectedBoard is null
+            ? Task.CompletedTask
+            : LoadBoardMembersAsync(boardDetailsVersion, selectedBoard.Id, page);
+
+    private async Task HandleBoardMemberSearchChanged(string? value)
+    {
+        memberSearch = value?.Trim();
+        memberSearchDebounce?.Cancel();
+        memberSearchDebounce?.Dispose();
+        memberSearchDebounce = new CancellationTokenSource();
+        var token = memberSearchDebounce.Token;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested && selectedBoard is not null)
+            {
+                await LoadBoardMembersAsync(boardDetailsVersion, selectedBoard.Id, 1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task HandleMemberCandidateSearchChanged(string? value)
+    {
+        memberCandidateSearch = value?.Trim();
+        memberCandidateSearchDebounce?.Cancel();
+        memberCandidateSearchDebounce?.Dispose();
+        memberCandidateSearchDebounce = new CancellationTokenSource();
+        var token = memberCandidateSearchDebounce.Token;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadMemberCandidatesAsync(1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadMemberCandidatesAsync(int page)
+    {
+        var requestVersion = ++memberCandidateRequestVersion;
+        memberCandidates = null;
+        memberCandidateError = null;
+        var search = NormalizeSearch(memberCandidateSearch);
+        if (search is null || search.Length < 2)
+        {
+            isLoadingMemberCandidates = false;
+            return;
+        }
+
+        isLoadingMemberCandidates = true;
+        try
+        {
+            var response = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = DirectoryPageSize,
+                    Search = search
+                });
+            if (requestVersion != memberCandidateRequestVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                memberCandidateError = "User search could not be completed. Confirm your access and retry.";
+                return;
+            }
+
+            memberCandidates = response;
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == memberCandidateRequestVersion)
+            {
+                memberCandidateError = "The user directory could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == memberCandidateRequestVersion)
+            {
+                memberCandidateError = "The user directory returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == memberCandidateRequestVersion)
+            {
+                isLoadingMemberCandidates = false;
+            }
+        }
+    }
+
+    private Task RetryMemberCandidatesAsync() => LoadMemberCandidatesAsync(memberCandidates?.Page ?? 1);
+
+    private Task LoadMemberCandidatePageAsync(int page) => LoadMemberCandidatesAsync(page);
+
+    private async Task AddBoardMemberAsync(UserDirectoryResponse candidate)
+    {
+        if (boardDetails is null || isSubmitting)
+        {
+            return;
+        }
+
+        memberOperationError = null;
+        if (candidate.UserId == boardDetails.OwnerId)
+        {
+            ToastService.Warning("The board owner is already represented by the board's Owner role.");
+            return;
+        }
+
+        if (boardMembersPage?.Items.Any(member => member.UserId == candidate.UserId) == true)
+        {
+            ToastService.Warning("This user is already a member of the board.");
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var added = await BoardMemberApiService.AddAsync(
+                boardDetails.Id,
+                new AddBoardMemberRequest
+                {
+                    UserId = candidate.UserId,
+                    Role = newMemberRole
+                });
+            if (added is null)
+            {
+                memberOperationError = "The member was not added. The backend accepts only eligible Employees and prevents duplicate membership.";
+                return;
+            }
+
+            await LoadBoardMembersAsync(boardDetailsVersion, boardDetails.Id, 1);
+        }
+        catch (HttpRequestException)
+        {
+            memberOperationError = "The board member service could not be reached. Membership was not confirmed.";
+        }
+        catch (JsonException)
+        {
+            memberOperationError = "The board member service returned an invalid response. Refresh members to confirm the result.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task UpdateBoardMemberRoleAsync(BoardMemberResponse member, ChangeEventArgs args)
+    {
+        if (!Enum.TryParse<BoardMemberRole>(args.Value?.ToString(), out var role) ||
+            role is not (BoardMemberRole.Viewer or BoardMemberRole.Editor))
+        {
+            memberOperationError = "Select a supported board member role.";
+            return;
+        }
+
+        if (selectedBoard is null || isSubmitting || role == member.Role)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        memberOperationError = null;
+        try
+        {
+            var updated = await BoardMemberApiService.UpdateRoleAsync(
+                selectedBoard.Id,
+                member.UserId,
+                new UpdateBoardMemberRoleRequest { Role = role });
+            if (!updated)
+            {
+                memberOperationError = "The role was not updated. The Owner role is managed separately from board membership.";
+                return;
+            }
+
+            member.Role = role;
+        }
+        catch (HttpRequestException)
+        {
+            memberOperationError = "The board member service could not be reached. The role change was not confirmed.";
+        }
+    }
+
+    private void RequestMemberRemoval(Guid userId)
+    {
+        pendingRemovalUserId = userId;
+    }
+
+    private void CancelMemberRemoval()
+    {
+        if (!isSubmitting)
+        {
+            pendingRemovalUserId = null;
+        }
+    }
+
+    private async Task RemoveBoardMemberAsync(BoardMemberResponse member)
+    {
+        if (selectedBoard is null || isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        memberOperationError = null;
+        try
+        {
+            var removed = await BoardMemberApiService.DeleteAsync(
+                selectedBoard.Id,
+                member.UserId);
+            if (!removed)
+            {
+                memberOperationError = "The member was not removed. The backend may require resolving task assignments first.";
+                return;
+            }
+
+            pendingRemovalUserId = null;
+            var page = boardMembersPage?.Items.Count == 1 && currentMemberPage > 1
+                ? currentMemberPage - 1
+                : currentMemberPage;
+            await LoadBoardMembersAsync(boardDetailsVersion, selectedBoard.Id, page);
+        }
+        catch (HttpRequestException)
+        {
+            memberOperationError = "The board member service could not be reached. Membership was not confirmed as removed.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void RequestBoardDeletion(BoardResponse board)
+    {
+        boardPendingDelete = board;
+        deleteBoardError = null;
+    }
+
+    private void CancelBoardDeletion()
+    {
+        if (!isSubmitting)
+        {
+            boardPendingDelete = null;
+            deleteBoardError = null;
+        }
+    }
+
+    private async Task DeleteBoardAsync()
+    {
+        if (boardPendingDelete is null || isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        deleteBoardError = null;
+        try
+        {
+            var deletedId = boardPendingDelete.Id;
+            var deleted = await BoardApiService.DeleteAsync(deletedId);
+            if (!deleted)
+            {
+                deleteBoardError = "The board was not deleted. It may still have columns or members; remove dependencies through their supported workflows first.";
+                return;
+            }
+
+            if (selectedBoard?.Id == deletedId)
+            {
+                CloseBoardDetails();
+            }
+
+            boardPendingDelete = null;
+            InvalidateWorkspaceBoardCache();
+            await LoadBoardsAsync(1);
+        }
+        catch (HttpRequestException)
+        {
+            deleteBoardError = "The board service could not be reached. Deletion was not confirmed.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task ClearFilters()
+    {
+        boardSearchDebounce?.Cancel();
+        boardSearch = null;
+        workspaceFilter = null;
+        filterProjectRequestVersion++;
+        isLoadingFilterProjects = false;
+        projectFilter = null;
+        purposeFilter = null;
+        filterProjects = [];
+        filterProjectsError = null;
+        currentBoardPage = 1;
+        await LoadBoardsAsync(1);
+    }
+
+    private List<BoardResponse> GetVisibleLocalBoards() =>
+        localFilteredBoards
+            .Skip((currentBoardPage - 1) * BoardPageSize)
+            .Take(BoardPageSize)
+            .ToList();
+
+    private void InvalidateWorkspaceBoardCache()
+    {
+        workspaceBoardCache = [];
+        workspaceBoardCacheWorkspaceId = null;
+        workspaceBoardCacheSearch = null;
+    }
+
+    private string GetWorkspaceName(Guid workspaceId) =>
+        workspaces.FirstOrDefault(workspace => workspace.Id == workspaceId)?.Name ??
+        "Workspace name unavailable";
+
+    private static string? NormalizeSearch(string? search) =>
+        string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+
+    private static string GetPurposeLabel(BoardPurpose purpose) =>
+        purpose == BoardPurpose.Project ? "Project board" : "General/Learning board";
+
+    private static string GetFullName(string firstName, string lastName) =>
+        $"{firstName} {lastName}".Trim();
+
+    public void Dispose()
+    {
+        boardSearchDebounce?.Cancel();
+        boardSearchDebounce?.Dispose();
+        memberSearchDebounce?.Cancel();
+        memberSearchDebounce?.Dispose();
+        memberCandidateSearchDebounce?.Cancel();
+        memberCandidateSearchDebounce?.Dispose();
+    }
+
+    private sealed class BoardFormModel
+    {
+        [Required]
+        [StringLength(100, MinimumLength = 2, ErrorMessage = "Board name must be between 2 and 100 characters.")]
+        public string Name { get; set; } = string.Empty;
+
+        [StringLength(500, ErrorMessage = "Description cannot exceed 500 characters.")]
+        public string? Description { get; set; }
+
+        public Guid WorkspaceId { get; set; }
+
+        public Guid? ProjectId { get; set; }
+
+        public BoardPurpose Purpose { get; set; } = BoardPurpose.Project;
+    }
+}

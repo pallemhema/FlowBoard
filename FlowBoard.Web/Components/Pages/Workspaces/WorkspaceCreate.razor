@@ -1,7 +1,10 @@
 @page "/workspaces/create"
+@page "/manager/workspaces/create"
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOrManager)]
 
 @using FlowBoard.Shared.DTOs.Workspaces
 @using FlowBoard.Web.Models.Workspaces
+@using System.Text.Json
 
 @inject IWorkspaceApiService WorkspaceApiService
 @inject NavigationManager Navigation
@@ -11,7 +14,7 @@
 <div class="page-shell">
 
     <Breadcrumbs>
-        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
+        <li class="breadcrumb-item"><NavLink href="@WorkspaceRoot">Workspaces</NavLink></li>
         <li class="breadcrumb-item active" aria-current="page">Create Workspace</li>
     </Breadcrumbs>
 
@@ -58,7 +61,6 @@
 
         try
         {
-            // UI model → API request DTO
             var request =
                 new CreateWorkspaceRequest
                 {
@@ -77,11 +79,15 @@
             }
 
             Navigation.NavigateTo(
-                $"/workspaces/{workspace.Id}");
+                $"{WorkspaceRoot}/{workspace.Id}");
         }
-            catch
+            catch (HttpRequestException)
             {
-                errorMessage = "Unable to create the workspace. Please try again.";
+                errorMessage = "The workspace service could not be reached.";
+            }
+            catch (JsonException)
+            {
+                errorMessage = "The workspace service returned an invalid response.";
             }
         finally
         {
@@ -92,6 +98,13 @@
     private void Cancel()
     {
         Navigation.NavigateTo(
-            "/workspaces");
+            WorkspaceRoot);
     }
+
+    private string WorkspaceRoot =>
+        Navigation.Uri.Contains(
+            "/manager/workspaces/create",
+            StringComparison.OrdinalIgnoreCase)
+            ? "/manager/workspaces"
+            : "/workspaces";
 }

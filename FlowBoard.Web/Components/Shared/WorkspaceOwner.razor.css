@@ -1,0 +1,36 @@
+.workspace-owner {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.workspace-owner-details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.workspace-owner-name {
+  overflow: hidden;
+  color: var(--flowboard-ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-owner-email {
+  overflow: hidden;
+  color: var(--flowboard-muted);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-owner-fallback {
+  color: var(--flowboard-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+}

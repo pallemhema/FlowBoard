@@ -1,0 +1,145 @@
+.manager-teams-page {
+  display: grid;
+  gap: 1rem;
+  max-width: 1360px;
+}
+
+.manager-org-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.manager-org-panel {
+  min-width: 0;
+  padding: clamp(1rem, 2.5vw, 1.5rem);
+  border: 1px solid var(--flowboard-line);
+  border-radius: 0.9rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(32, 36, 58, 0.035);
+}
+
+.manager-org-panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.manager-org-panel-heading h2 {
+  margin: 0;
+  color: var(--flowboard-ink);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.manager-org-icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 2.25rem;
+  place-items: center;
+  border-radius: 0.65rem;
+  color: var(--flowboard-primary);
+  background: var(--flowboard-primary-soft);
+}
+
+.manager-org-icon-green {
+  color: #27835d;
+  background: #eaf6f0;
+}
+
+.manager-org-loading {
+  display: flex;
+  min-height: 7rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  color: var(--flowboard-muted);
+  font-size: 0.82rem;
+}
+
+.manager-org-error {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid #f1d9d7;
+  border-radius: 0.7rem;
+  color: #9c302a;
+  background: #fff8f7;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.manager-org-people {
+  display: grid;
+}
+
+.manager-org-person {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #eff0f5;
+}
+
+.manager-org-person:first-child {
+  padding-top: 0;
+}
+
+.manager-org-person:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.manager-org-person-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.14rem;
+}
+
+.manager-org-person-copy strong,
+.manager-org-person-copy span,
+.manager-org-person-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manager-org-person-copy strong {
+  color: var(--flowboard-ink);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.manager-org-person-copy span,
+.manager-org-person-copy small {
+  color: var(--flowboard-muted);
+  font-size: 0.72rem;
+}
+
+.manager-org-person-copy .manager-org-role {
+  justify-self: start;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  color: #4e58a6;
+  background: #eef0ff;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.manager-org-note {
+  margin: 0.7rem 0 0;
+  color: var(--flowboard-muted);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 767.98px) {
+  .manager-org-grid {
+    grid-template-columns: 1fr;
+  }
+}

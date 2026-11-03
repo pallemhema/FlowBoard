@@ -1,0 +1,1332 @@
+@page "/admin/workspaces"
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+@implements IDisposable
+
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Common
+@using FlowBoard.Shared.DTOs.Projects
+@using FlowBoard.Shared.DTOs.Workspaces
+@using FlowBoard.Shared.Enums
+@using FlowBoard.Web.Services.Api
+
+@inject IWorkspaceApiService WorkspaceApiService
+@inject IUserDirectoryApiService UserDirectoryApiService
+@inject IProjectApiService ProjectApiService
+@inject IBoardApiService BoardApiService
+@inject ToastService ToastService
+
+<PageTitle>Workspace Management | FlowBoard</PageTitle>
+
+<div class="page-shell admin-workspaces-page">
+    <PageHeader Title="Workspace Management"
+                Eyebrow="Administration"
+                Description="Create and manage workspaces, their members, and associated resources.">
+        <Actions>
+            <button type="button" class="btn btn-primary" @onclick="OpenCreateForm">
+                <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>Create workspace
+            </button>
+        </Actions>
+    </PageHeader>
+
+    @if (showWorkspaceForm)
+    {
+        <section class="workspace-form-panel" aria-labelledby="workspace-form-title">
+            <div class="workspace-panel-heading">
+                <div>
+                    <p class="section-label mb-1">Workspace settings</p>
+                    <h2 id="workspace-form-title">@(isEditingWorkspace ? "Edit workspace" : "Create a workspace")</h2>
+                </div>
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close workspace form"
+                        disabled="@isSubmitting"
+                        @onclick="CloseWorkspaceForm"></button>
+            </div>
+
+            <EditForm Model="@workspaceForm" OnValidSubmit="SaveWorkspaceAsync" FormName="admin-workspace-form">
+                <DataAnnotationsValidator />
+                <div class="workspace-form-grid">
+                    <div class="mb-3">
+                        <label class="form-label" for="workspace-name">Workspace name</label>
+                        <InputText id="workspace-name"
+                                   class="form-control"
+                                   @bind-Value="workspaceForm.Name"
+                                   placeholder="e.g. Product Operations" />
+                        <ValidationMessage For="@(() => workspaceForm.Name)" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="workspace-description">Description <span class="text-muted fw-normal">(optional)</span></label>
+                        <InputTextArea id="workspace-description"
+                                       class="form-control workspace-description-input"
+                                       @bind-Value="workspaceForm.Description"
+                                       placeholder="What is this workspace for?" />
+                        <ValidationMessage For="@(() => workspaceForm.Description)" />
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(workspaceFormError))
+                {
+                    <div class="workspace-error compact" role="alert">@workspaceFormError</div>
+                }
+
+                <div class="d-flex justify-content-end gap-2 mt-3">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            disabled="@isSubmitting"
+                            @onclick="CloseWorkspaceForm">Cancel</button>
+                    <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                        @(isSubmitting ? "Saving..." : isEditingWorkspace ? "Save changes" : "Create workspace")
+                    </button>
+                </div>
+            </EditForm>
+        </section>
+    }
+
+    <section class="workspace-list-panel" aria-labelledby="workspace-list-title">
+        <div class="workspace-panel-heading">
+            <div>
+                <h2 id="workspace-list-title">Workspaces</h2>
+                <p>Organization workspaces visible to administrators.</p>
+            </div>
+            @if (workspacePage is not null)
+            {
+                <span class="workspace-total-count">@workspacePage.TotalCount.ToString("N0") workspaces</span>
+            }
+        </div>
+
+        <div class="workspace-filter-bar">
+            <div class="workspace-search">
+                <SearchBox Value="@workspaceSearch"
+                           ValueChanged="HandleWorkspaceSearchChanged"
+                           Placeholder="Search by workspace name or description" />
+            </div>
+            <button type="button"
+                    class="btn btn-outline-secondary"
+                    disabled="@string.IsNullOrWhiteSpace(workspaceSearch)"
+                    @onclick="ClearWorkspaceSearch">
+                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Clear search
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(workspaceListError))
+        {
+            <div class="workspace-error" role="alert">
+                <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                <span>@workspaceListError</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadWorkspacesAsync(currentWorkspacePage)">Retry</button>
+            </div>
+        }
+        else if (isLoadingWorkspaces)
+        {
+            <div class="workspace-loading" role="status" aria-live="polite">
+                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                <span>Loading workspaces...</span>
+            </div>
+        }
+        else if (workspacePage is not null && workspacePage.Items.Count == 0)
+        {
+            <EmptyState Title="@(string.IsNullOrWhiteSpace(workspaceSearch) ? "No workspaces yet" : "No matching workspaces")"
+                        Message="@(string.IsNullOrWhiteSpace(workspaceSearch) ? "Create a workspace to organize projects and boards." : "Try another search or clear the current filter.")">
+                @if (string.IsNullOrWhiteSpace(workspaceSearch))
+                {
+                    <button type="button" class="btn btn-primary" @onclick="OpenCreateForm">Create your first workspace</button>
+                }
+            </EmptyState>
+        }
+        else if (workspacePage is not null)
+        {
+            <div class="workspace-table-wrap">
+                <table class="table workspace-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Workspace</th>
+                            <th scope="col">Owner</th>
+                            <th scope="col">Created</th>
+                            <th scope="col">Updated</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var workspace in workspacePage.Items)
+                        {
+                            <tr @key="workspace.Id">
+                                <td>
+                                    <div class="workspace-name-cell">
+                                        <span class="workspace-avatar" aria-hidden="true"><i class="bi bi-grid"></i></span>
+                                        <span class="workspace-name-copy">
+                                            <strong>@workspace.Name</strong>
+                                            <small>@(string.IsNullOrWhiteSpace(workspace.Description) ? "No description" : workspace.Description)</small>
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="workspace-owner-cell">
+                                    <WorkspaceOwner OwnerName="@workspace.OwnerName"
+                                                    OwnerEmail="@workspace.OwnerEmail"
+                                                    SizeRem="1.75" />
+                                </td>
+                                <td class="workspace-date-cell">@workspace.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
+                                <td class="workspace-date-cell">@(workspace.ModifiedAt?.ToLocalTime().ToString("MMM d, yyyy") ?? "—")</td>
+                                <td class="workspace-actions-cell">
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => OpenWorkspaceDetailsAsync(workspace)">
+                                        <i class="bi bi-eye me-1" aria-hidden="true"></i>Details
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-secondary"
+                                            aria-label="@($"Edit {workspace.Name}")"
+                                            @onclick="() => OpenEditForm(workspace)">
+                                        <i class="bi bi-pencil" aria-hidden="true"></i>
+                                    </button>
+                                    <button type="button"
+                                            class="btn btn-sm btn-outline-danger"
+                                            aria-label="@($"Delete {workspace.Name}")"
+                                            @onclick="() => RequestWorkspaceDeletion(workspace)">
+                                        <i class="bi bi-trash" aria-hidden="true"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="workspace-mobile-list">
+                @foreach (var workspace in workspacePage.Items)
+                {
+                    <article class="workspace-mobile-card" @key="workspace.Id">
+                        <div class="workspace-mobile-heading">
+                            <span class="workspace-avatar" aria-hidden="true"><i class="bi bi-grid"></i></span>
+                            <div class="workspace-name-copy">
+                                <strong>@workspace.Name</strong>
+                                <small>@(string.IsNullOrWhiteSpace(workspace.Description) ? "No description" : workspace.Description)</small>
+                            </div>
+                        </div>
+                        <dl class="workspace-mobile-meta">
+                            <div>
+                                <dt>Owner</dt>
+                                <dd>
+                                    <WorkspaceOwner OwnerName="@workspace.OwnerName"
+                                                    OwnerEmail="@workspace.OwnerEmail"
+                                                    SizeRem="1.75" />
+                                </dd>
+                            </div>
+                            <div><dt>Created</dt><dd>@workspace.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div>
+                        </dl>
+                        <div class="workspace-mobile-actions">
+                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenWorkspaceDetailsAsync(workspace)">Details</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditForm(workspace)">Edit</button>
+                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RequestWorkspaceDeletion(workspace)">Delete</button>
+                        </div>
+                    </article>
+                }
+            </div>
+
+            <Pagination CurrentPage="@workspacePage.Page"
+                        TotalPages="@workspacePage.TotalPages"
+                        TotalCount="@workspacePage.TotalCount"
+                        PageChanged="LoadWorkspacesAsync" />
+        }
+    </section>
+
+    @if (selectedWorkspace is not null)
+    {
+        <section class="workspace-details-panel" aria-labelledby="workspace-details-title">
+            <div class="workspace-details-header">
+                <div class="workspace-details-identity">
+                    <span class="workspace-avatar workspace-avatar-large" aria-hidden="true"><i class="bi bi-grid"></i></span>
+                    <div>
+                        <p class="section-label mb-1">Workspace details</p>
+                        <h2 id="workspace-details-title">@selectedWorkspace.Name</h2>
+                        <p>@(string.IsNullOrWhiteSpace(selectedWorkspace.Description) ? "No description provided." : selectedWorkspace.Description)</p>
+                    </div>
+                </div>
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close workspace details"
+                        @onclick="CloseWorkspaceDetails"></button>
+            </div>
+
+            <dl class="workspace-facts">
+                <div>
+                    <dt>Owner</dt>
+                    <dd>
+                        <WorkspaceOwner OwnerName="@selectedWorkspace.OwnerName"
+                                        OwnerEmail="@selectedWorkspace.OwnerEmail"
+                                        SizeRem="1.75" />
+                    </dd>
+                </div>
+                <div><dt>Created</dt><dd>@selectedWorkspace.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</dd></div>
+                @if (selectedWorkspace.ModifiedAt.HasValue)
+                {
+                    <div><dt>Updated</dt><dd>@selectedWorkspace.ModifiedAt.Value.ToLocalTime().ToString("MMM d, yyyy")</dd></div>
+                }
+            </dl>
+
+            <div class="workspace-resource-grid">
+                <section class="workspace-resource-section" aria-labelledby="workspace-projects-title">
+                    <div class="workspace-subsection-heading">
+                        <div>
+                            <h3 id="workspace-projects-title">Projects</h3>
+                            <p>Projects belonging to this workspace.</p>
+                        </div>
+                        @if (projects is not null)
+                        {
+                            <span class="workspace-resource-count">@projects.Count.ToString("N0")</span>
+                        }
+                    </div>
+                    @if (isLoadingProjects)
+                    {
+                        <div class="workspace-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading projects...</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(projectsError))
+                    {
+                        <div class="workspace-error compact" role="alert">
+                            <span>@projectsError</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadProjectsAsync(selectedWorkspace.Id)">Retry</button>
+                        </div>
+                    }
+                    else if (projects is { Count: 0 })
+                    {
+                        <EmptyState Title="No projects" Message="No projects are associated with this workspace." />
+                    }
+                    else if (projects is not null)
+                    {
+                        <div class="workspace-resource-list">
+                            @foreach (var project in projects)
+                            {
+                                <article class="workspace-resource-row" @key="project.ProjectId">
+                                    <span class="workspace-resource-icon project-resource-icon" aria-hidden="true"><i class="bi bi-kanban"></i></span>
+                                    <span class="workspace-resource-copy">
+                                        <strong>@project.Name</strong>
+                                        <small>@project.Status</small>
+                                    </span>
+                                    <span class="workspace-resource-date">@project.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                </article>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="workspace-resource-section" aria-labelledby="workspace-boards-title">
+                    <div class="workspace-subsection-heading">
+                        <div>
+                            <h3 id="workspace-boards-title">Workspace boards</h3>
+                            <p>General or Learning boards directly under this workspace.</p>
+                        </div>
+                        @if (directBoards is not null)
+                        {
+                            <span class="workspace-resource-count">@directBoards.Count.ToString("N0")</span>
+                        }
+                    </div>
+                    @if (isLoadingBoards)
+                    {
+                        <div class="workspace-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading boards...</div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(boardsError))
+                    {
+                        <div class="workspace-error compact" role="alert">
+                            <span>@boardsError</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadDirectBoardsAsync(selectedWorkspace.Id)">Retry</button>
+                        </div>
+                    }
+                    else if (directBoards is { Count: 0 })
+                    {
+                        <EmptyState Title="No direct boards" Message="No boards are attached directly to this workspace." />
+                    }
+                    else if (directBoards is not null)
+                    {
+                        <div class="workspace-resource-list">
+                            @foreach (var board in directBoards)
+                            {
+                                <article class="workspace-resource-row" @key="board.Id">
+                                    <span class="workspace-resource-icon board-resource-icon" aria-hidden="true"><i class="bi bi-columns-gap"></i></span>
+                                    <span class="workspace-resource-copy">
+                                        <strong>@board.Name</strong>
+                                        <small>@board.Purpose</small>
+                                    </span>
+                                    <span class="workspace-resource-date">@board.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                </article>
+                            }
+                        </div>
+                    }
+                </section>
+            </div>
+
+            <section class="workspace-members-section" aria-labelledby="workspace-members-title">
+                <div class="workspace-subsection-heading">
+                    <div>
+                        <h3 id="workspace-members-title">Workspace members</h3>
+                        <p>Membership here does not grant project or board membership.</p>
+                    </div>
+                    @if (allMembers is not null)
+                    {
+                        <span class="workspace-resource-count">@allMembers.Count.ToString("N0")</span>
+                    }
+                </div>
+
+                <div class="workspace-members-grid">
+                    <div class="workspace-member-management">
+                        <label class="form-label">Find an account to add</label>
+                        <SearchBox Value="@candidateSearch"
+                                   ValueChanged="HandleCandidateSearchChanged"
+                                   Placeholder="Search by name or email" />
+                        <p class="workspace-api-note">The directory does not include user roles, so accounts are not role-filtered. The API checks account existence, owner exclusion, and duplicate membership; membership remains separate from other resource access.</p>
+                        @if (!string.IsNullOrWhiteSpace(memberOperationError))
+                        {
+                            <div class="workspace-error compact" role="alert">@memberOperationError</div>
+                        }
+                        @if (isLoadingCandidates)
+                        {
+                            <div class="workspace-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching accounts...</div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(candidateError))
+                        {
+                            <div class="workspace-error compact" role="alert">
+                                <span>@candidateError</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadCandidatesAsync(candidatePage)">Retry</button>
+                            </div>
+                        }
+                        else if (candidates is { Items.Count: 0 })
+                        {
+                            <p class="workspace-empty-hint">No accounts match this search.</p>
+                        }
+                        else if (candidates is not null)
+                        {
+                            <div class="workspace-candidate-list">
+                                @foreach (var candidate in candidates.Items)
+                                {
+                                    var isOwner = selectedWorkspace.OwnerId == candidate.UserId;
+                                    var isMember = allMembers?.Any(member => member.UserId == candidate.UserId) == true;
+                                    <div class="workspace-person-row" @key="candidate.UserId">
+                                        <UserAvatar FirstName="@candidate.FirstName" LastName="@candidate.LastName" />
+                                        <span class="workspace-person-copy">
+                                            <strong>@GetFullName(candidate.FirstName, candidate.LastName)</strong>
+                                            <small>@candidate.Email</small>
+                                        </span>
+                                        @if (isOwner)
+                                        {
+                                            <span class="workspace-owner-badge">Owner</span>
+                                        }
+                                        else if (isMember)
+                                        {
+                                            <span class="workspace-member-badge">Member</span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    disabled="@isSubmitting"
+                                                    @onclick="() => AddMemberAsync(candidate)">
+                                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <Pagination CurrentPage="@candidates.Page"
+                                        TotalPages="@candidates.TotalPages"
+                                        TotalCount="@candidates.TotalCount"
+                                        PageChanged="LoadCandidatesAsync" />
+                        }
+                    </div>
+
+                    <div class="workspace-current-members">
+                        <div class="workspace-member-filter">
+                            <label class="form-label" for="workspace-member-filter">Current members</label>
+                            <SearchBox Value="@memberSearch"
+                                       ValueChanged="HandleMemberSearchChanged"
+                                       Placeholder="Filter workspace members" />
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(membersError))
+                        {
+                            <div class="workspace-error compact" role="alert">
+                                <span>@membersError</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadMembersAsync()">Retry</button>
+                            </div>
+                        }
+                        else if (isLoadingMembers)
+                        {
+                            <div class="workspace-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading members...</div>
+                        }
+                        else if (filteredMembers.Count == 0)
+                        {
+                            <EmptyState Title="@(allMembers?.Count == 0 ? "No workspace members" : "No matching members")"
+                                        Message="@(allMembers?.Count == 0 ? "Add an account to create the first workspace membership." : "Try another name or email address.")" />
+                        }
+                        else
+                        {
+                            <div class="workspace-current-member-list">
+                                @foreach (var member in pagedMembers)
+                                {
+                                    <div class="workspace-person-row" @key="member.UserId">
+                                        <UserAvatar FirstName="@member.User.FirstName" LastName="@member.User.LastName" />
+                                        <span class="workspace-person-copy">
+                                            <strong>@GetFullName(member.User.FirstName, member.User.LastName)</strong>
+                                            <small>@member.User.Email</small>
+                                        </span>
+                                        <span class="workspace-joined-date">@member.JoinedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                        @if (pendingRemovalUserId == member.UserId)
+                                        {
+                                            <span class="workspace-remove-confirm">
+                                                <span>Remove?</span>
+                                                <button type="button" class="btn btn-sm btn-danger" disabled="@isSubmitting" @onclick="() => RemoveMemberAsync(member)">Confirm</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" disabled="@isSubmitting" @onclick="CancelMemberRemoval">Cancel</button>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    aria-label="@($"Remove {member.User.FirstName} {member.User.LastName} from workspace")"
+                                                    disabled="@(selectedWorkspace.OwnerId == member.UserId || isSubmitting)"
+                                                    @onclick="() => RequestMemberRemoval(member.UserId)">
+                                                Remove
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (filteredMembers.Count > MemberPageSize)
+                            {
+                                <div class="workspace-local-pagination">
+                                    <span>Showing @memberRangeStart-@memberRangeEnd of @filteredMembers.Count</span>
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Workspace member pages">
+                                        <button type="button" class="btn btn-outline-secondary" disabled="@(memberListPage <= 1)" aria-label="Previous member page" @onclick="PreviousMemberPage">Previous</button>
+                                        <button type="button" class="btn btn-outline-secondary" disabled="@(memberListPage >= memberPageCount)" aria-label="Next member page" @onclick="NextMemberPage">Next</button>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </section>
+        </section>
+    }
+
+    <ConfirmationDialog IsOpen="@(workspacePendingDeletion is not null)"
+                        Title="@(workspacePendingDeletion is null ? string.Empty : $"Delete {workspacePendingDeletion.Name}?")"
+                        ConfirmText="Delete workspace"
+                        ConfirmingText="Deleting..."
+                        IsBusy="@isSubmitting"
+                        OnCancel="CancelWorkspaceDeletion"
+                        OnConfirm="DeleteWorkspaceAsync">
+        <p>Deletion is blocked while projects, boards, or members are associated with this workspace. No dependent resources or memberships will be removed automatically.</p>
+        @if (!string.IsNullOrWhiteSpace(deleteWorkspaceError))
+        {
+            <div class="workspace-error compact" role="alert">@deleteWorkspaceError</div>
+        }
+    </ConfirmationDialog>
+</div>
+
+@code {
+    private const int WorkspacePageSize = 10;
+    private const int RelatedResourcePageSize = 100;
+    private const int MemberPageSize = 10;
+    private const int CandidatePageSize = 10;
+
+    private PagedResponse<WorkspaceResponse>? workspacePage;
+    private WorkspaceResponse? selectedWorkspace;
+    private WorkspaceResponse? workspacePendingDeletion;
+    private Guid? editingWorkspaceId;
+    private CreateWorkspaceRequest workspaceForm = new();
+    private PagedResponse<UserDirectoryResponse>? candidates;
+    private List<WorkspaceMemberResponse>? allMembers;
+    private List<ProjectResponse>? projects;
+    private List<BoardResponse>? directBoards;
+    private string? workspaceSearch;
+    private string? candidateSearch;
+    private string? memberSearch;
+    private string? workspaceListError;
+    private string? workspaceFormError;
+    private string? membersError;
+    private string? memberOperationError;
+    private string? candidateError;
+    private string? projectsError;
+    private string? boardsError;
+    private string? deleteWorkspaceError;
+    private int currentWorkspacePage = 1;
+    private int candidatePage = 1;
+    private int memberListPage = 1;
+    private Guid? pendingRemovalUserId;
+    private bool isLoadingWorkspaces = true;
+    private bool isLoadingMembers;
+    private bool isLoadingCandidates;
+    private bool isLoadingProjects;
+    private bool isLoadingBoards;
+    private bool isSubmitting;
+    private bool showWorkspaceForm;
+    private bool isEditingWorkspace;
+    private long workspaceRequestVersion;
+    private long candidateRequestVersion;
+    private CancellationTokenSource? workspaceSearchDebounce;
+    private CancellationTokenSource? candidateSearchDebounce;
+
+    private List<WorkspaceMemberResponse> filteredMembers => (allMembers ?? [])
+        .Where(member => Matches(
+            $"{member.User.FirstName} {member.User.LastName} {member.User.Email}",
+            memberSearch))
+        .ToList();
+
+    private List<WorkspaceMemberResponse> pagedMembers => filteredMembers
+        .Skip((memberListPage - 1) * MemberPageSize)
+        .Take(MemberPageSize)
+        .ToList();
+
+    private int memberPageCount => Math.Max(
+        1,
+        (int)Math.Ceiling(filteredMembers.Count / (double)MemberPageSize));
+    private int memberRangeStart => filteredMembers.Count == 0
+        ? 0
+        : (memberListPage - 1) * MemberPageSize + 1;
+    private int memberRangeEnd => Math.Min(
+        memberListPage * MemberPageSize,
+        filteredMembers.Count);
+
+    protected override Task OnInitializedAsync() => LoadWorkspacesAsync(1);
+
+    private async Task LoadWorkspacesAsync(int page)
+    {
+        var version = ++workspaceRequestVersion;
+        currentWorkspacePage = page;
+        isLoadingWorkspaces = true;
+        workspaceListError = null;
+        try
+        {
+            var response = await WorkspaceApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = WorkspacePageSize,
+                    Search = string.IsNullOrWhiteSpace(workspaceSearch) ? null : workspaceSearch
+                });
+
+            if (version != workspaceRequestVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                workspacePage = null;
+                workspaceListError = "Workspaces could not be loaded. Confirm your Admin access and retry.";
+                return;
+            }
+
+            workspacePage = response;
+            if (selectedWorkspace is not null)
+            {
+                selectedWorkspace = response.Items.FirstOrDefault(
+                    item => item.Id == selectedWorkspace.Id) ?? selectedWorkspace;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            if (version == workspaceRequestVersion)
+            {
+                workspacePage = null;
+                workspaceListError = "The workspace service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == workspaceRequestVersion)
+            {
+                workspacePage = null;
+                workspaceListError = "The workspace service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == workspaceRequestVersion)
+            {
+                isLoadingWorkspaces = false;
+            }
+        }
+    }
+
+    private async Task HandleWorkspaceSearchChanged(string? value)
+    {
+        workspaceSearch = value?.Trim();
+        workspaceSearchDebounce?.Cancel();
+        workspaceSearchDebounce?.Dispose();
+        workspaceSearchDebounce = new CancellationTokenSource();
+        var token = workspaceSearchDebounce.Token;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadWorkspacesAsync(1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task ClearWorkspaceSearch()
+    {
+        if (string.IsNullOrWhiteSpace(workspaceSearch))
+        {
+            return;
+        }
+
+        workspaceSearch = null;
+        workspaceSearchDebounce?.Cancel();
+        await LoadWorkspacesAsync(1);
+    }
+
+    private void OpenCreateForm()
+    {
+        workspaceForm = new CreateWorkspaceRequest();
+        workspaceFormError = null;
+        editingWorkspaceId = null;
+        isEditingWorkspace = false;
+        showWorkspaceForm = true;
+    }
+
+    private void OpenEditForm(WorkspaceResponse workspace)
+    {
+        editingWorkspaceId = workspace.Id;
+        workspaceForm = new CreateWorkspaceRequest
+        {
+            Name = workspace.Name,
+            Description = workspace.Description
+        };
+        workspaceFormError = null;
+        isEditingWorkspace = true;
+        showWorkspaceForm = true;
+    }
+
+    private void CloseWorkspaceForm()
+    {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        showWorkspaceForm = false;
+        workspaceFormError = null;
+        editingWorkspaceId = null;
+    }
+
+    private async Task SaveWorkspaceAsync()
+    {
+        if (isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        workspaceFormError = null;
+        try
+        {
+            if (isEditingWorkspace)
+            {
+                if (!editingWorkspaceId.HasValue)
+                {
+                    workspaceFormError = "Select a workspace to edit.";
+                    return;
+                }
+
+                var updated = await WorkspaceApiService.UpdateAsync(
+                    editingWorkspaceId.Value,
+                    new UpdateWorkspaceRequest
+                    {
+                        Name = workspaceForm.Name,
+                        Description = workspaceForm.Description
+                    });
+
+                if (updated is null)
+                {
+                    workspaceFormError = "The workspace was not updated. Check your access and retry.";
+                    return;
+                }
+
+                selectedWorkspace = updated;
+                showWorkspaceForm = false;
+                editingWorkspaceId = null;
+                await LoadWorkspacesAsync(currentWorkspacePage);
+                await LoadWorkspaceDetailsAsync(updated);
+            }
+            else
+            {
+                var created = await WorkspaceApiService.CreateAsync(workspaceForm);
+                if (created is null)
+                {
+                    workspaceFormError = "The workspace was not created. Check your access and retry.";
+                    return;
+                }
+
+                showWorkspaceForm = false;
+                await LoadWorkspacesAsync(1);
+                await OpenWorkspaceDetailsAsync(created);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            workspaceFormError = "The workspace service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            workspaceFormError = "The workspace service returned an invalid response.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task OpenWorkspaceDetailsAsync(WorkspaceResponse workspace)
+    {
+        selectedWorkspace = workspace;
+        await LoadWorkspaceDetailsAsync(workspace);
+    }
+
+    private async Task LoadWorkspaceDetailsAsync(WorkspaceResponse workspace)
+    {
+        selectedWorkspace = workspace;
+        allMembers = null;
+        membersError = null;
+        memberOperationError = null;
+        projects = null;
+        projectsError = null;
+        directBoards = null;
+        boardsError = null;
+        candidates = null;
+        candidateError = null;
+        candidateSearchDebounce?.Cancel();
+        candidateSearch = null;
+        candidatePage = 1;
+        memberSearch = null;
+        memberListPage = 1;
+        pendingRemovalUserId = null;
+
+        await Task.WhenAll(
+            LoadMembersAsync(),
+            LoadProjectsAsync(workspace.Id),
+            LoadDirectBoardsAsync(workspace.Id),
+            LoadCandidatesAsync(1));
+    }
+
+    private void CloseWorkspaceDetails()
+    {
+        selectedWorkspace = null;
+        allMembers = null;
+        candidates = null;
+        projects = null;
+        directBoards = null;
+        pendingRemovalUserId = null;
+        candidateSearchDebounce?.Cancel();
+        candidateRequestVersion++;
+    }
+
+    private async Task LoadMembersAsync()
+    {
+        if (selectedWorkspace is null)
+        {
+            return;
+        }
+
+        var workspaceId = selectedWorkspace.Id;
+        isLoadingMembers = true;
+        membersError = null;
+        try
+        {
+            var firstPage = await WorkspaceApiService.GetMembersAsync(
+                workspaceId,
+                new PagedSearchRequest { Page = 1, PageSize = RelatedResourcePageSize });
+            if (firstPage is null)
+            {
+                if (selectedWorkspace?.Id == workspaceId)
+                {
+                    allMembers = null;
+                    membersError = "Workspace members could not be loaded. Confirm your access and retry.";
+                }
+                return;
+            }
+
+            var members = firstPage.Items.ToList();
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await WorkspaceApiService.GetMembersAsync(
+                    workspaceId,
+                    new PagedSearchRequest { Page = page, PageSize = RelatedResourcePageSize });
+                if (response is null)
+                {
+                    if (selectedWorkspace?.Id == workspaceId)
+                    {
+                        allMembers = null;
+                        membersError = "Workspace memberships could not be fully loaded. Results are withheld to avoid partial membership details.";
+                    }
+                    return;
+                }
+
+                members.AddRange(response.Items);
+            }
+
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                allMembers = members;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                allMembers = null;
+                membersError = "The workspace member service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                allMembers = null;
+                membersError = "The workspace member service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                isLoadingMembers = false;
+            }
+        }
+    }
+
+    private async Task LoadProjectsAsync(Guid workspaceId)
+    {
+        isLoadingProjects = true;
+        projectsError = null;
+        try
+        {
+            var firstPage = await ProjectApiService.GetAsync(
+                new ProjectQueryRequest
+                {
+                    WorkspaceId = workspaceId,
+                    Page = 1,
+                    PageSize = RelatedResourcePageSize
+                });
+
+            if (firstPage is null)
+            {
+                if (selectedWorkspace?.Id == workspaceId)
+                {
+                    projects = null;
+                    projectsError = "Associated projects could not be loaded.";
+                }
+                return;
+            }
+
+            var result = firstPage.Items.ToList();
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await ProjectApiService.GetAsync(
+                    new ProjectQueryRequest
+                    {
+                        WorkspaceId = workspaceId,
+                        Page = page,
+                        PageSize = RelatedResourcePageSize
+                    });
+                if (response is null)
+                {
+                    if (selectedWorkspace?.Id == workspaceId)
+                    {
+                        projects = null;
+                        projectsError = "The project list could not be fully loaded. Partial results are withheld.";
+                    }
+                    return;
+                }
+
+                result.AddRange(response.Items);
+            }
+
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                projects = result;
+            }
+        }
+        catch (HttpRequestException)
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                projects = null;
+                projectsError = "The project service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                projects = null;
+                projectsError = "The project service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                isLoadingProjects = false;
+            }
+        }
+    }
+
+    private async Task LoadDirectBoardsAsync(Guid workspaceId)
+    {
+        isLoadingBoards = true;
+        boardsError = null;
+        try
+        {
+            var firstPage = await BoardApiService.GetAsync(
+                new BoardQueryRequest
+                {
+                    WorkspaceId = workspaceId,
+                    Page = 1,
+                    PageSize = RelatedResourcePageSize
+                });
+
+            if (firstPage is null)
+            {
+                if (selectedWorkspace?.Id == workspaceId)
+                {
+                    directBoards = null;
+                    boardsError = "Workspace boards could not be loaded.";
+                }
+                return;
+            }
+
+            var result = firstPage.Items.ToList();
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await BoardApiService.GetAsync(
+                    new BoardQueryRequest
+                    {
+                        WorkspaceId = workspaceId,
+                        Page = page,
+                        PageSize = RelatedResourcePageSize
+                    });
+                if (response is null)
+                {
+                    if (selectedWorkspace?.Id == workspaceId)
+                    {
+                        directBoards = null;
+                        boardsError = "The workspace board list could not be fully loaded. Partial results are withheld.";
+                    }
+                    return;
+                }
+
+                result.AddRange(response.Items);
+            }
+
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                directBoards = result
+                    .Where(board => board.ProjectId is null)
+                    .OrderBy(board => board.Name)
+                    .ToList();
+            }
+        }
+        catch (HttpRequestException)
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                directBoards = null;
+                boardsError = "The board service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                directBoards = null;
+                boardsError = "The board service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (selectedWorkspace?.Id == workspaceId)
+            {
+                isLoadingBoards = false;
+            }
+        }
+    }
+
+    private async Task HandleCandidateSearchChanged(string? value)
+    {
+        candidateSearch = value?.Trim();
+        candidateSearchDebounce?.Cancel();
+        candidateSearchDebounce?.Dispose();
+        candidateSearchDebounce = new CancellationTokenSource();
+        var token = candidateSearchDebounce.Token;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadCandidatesAsync(1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadCandidatesAsync(int page)
+    {
+        if (selectedWorkspace is null)
+        {
+            return;
+        }
+
+        var workspaceId = selectedWorkspace.Id;
+        var version = ++candidateRequestVersion;
+        candidatePage = page;
+        isLoadingCandidates = true;
+        candidateError = null;
+        try
+        {
+            var response = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = CandidatePageSize,
+                    Search = string.IsNullOrWhiteSpace(candidateSearch) ? null : candidateSearch
+                });
+            if (version != candidateRequestVersion || selectedWorkspace?.Id != workspaceId)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                candidates = null;
+                candidateError = "The account directory could not be loaded. Confirm your Admin access and retry.";
+                return;
+            }
+
+            candidates = response;
+        }
+        catch (HttpRequestException)
+        {
+            if (version == candidateRequestVersion)
+            {
+                candidates = null;
+                candidateError = "The account directory could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == candidateRequestVersion)
+            {
+                candidates = null;
+                candidateError = "The account directory returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == candidateRequestVersion)
+            {
+                isLoadingCandidates = false;
+            }
+        }
+    }
+
+    private async Task AddMemberAsync(UserDirectoryResponse candidate)
+    {
+        if (selectedWorkspace is null || isSubmitting)
+        {
+            return;
+        }
+
+        var workspace = selectedWorkspace;
+        memberOperationError = null;
+        if (workspace.OwnerId == candidate.UserId)
+        {
+            ToastService.Warning("The workspace owner is not managed as a workspace member.");
+            return;
+        }
+
+        if (allMembers?.Any(member => member.UserId == candidate.UserId) == true)
+        {
+            ToastService.Warning("This account is already a workspace member.");
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var added = await WorkspaceApiService.AddMemberAsync(
+                workspace.Id,
+                new AddWorkspaceMemberRequest { UserId = candidate.UserId });
+            if (added is null)
+            {
+                memberOperationError = "Membership was not added. Confirm the account is eligible and retry.";
+                return;
+            }
+
+            await LoadMembersAsync();
+        }
+        catch (HttpRequestException)
+        {
+            memberOperationError = "The workspace service could not be reached. Membership was not confirmed.";
+        }
+        catch (JsonException)
+        {
+            memberOperationError = "The workspace service returned an invalid response. Refresh membership to confirm the result.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private Task HandleMemberSearchChanged(string? value)
+    {
+        memberSearch = value?.Trim();
+        memberListPage = 1;
+        return Task.CompletedTask;
+    }
+
+    private void PreviousMemberPage()
+    {
+        if (memberListPage > 1)
+        {
+            memberListPage--;
+        }
+    }
+
+    private void NextMemberPage()
+    {
+        if (memberListPage < memberPageCount)
+        {
+            memberListPage++;
+        }
+    }
+
+    private void RequestMemberRemoval(Guid userId)
+    {
+        pendingRemovalUserId = userId;
+    }
+
+    private void CancelMemberRemoval()
+    {
+        if (!isSubmitting)
+        {
+            pendingRemovalUserId = null;
+        }
+    }
+
+    private async Task RemoveMemberAsync(WorkspaceMemberResponse member)
+    {
+        if (selectedWorkspace is null || isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        memberOperationError = null;
+        try
+        {
+            var removed = await WorkspaceApiService.RemoveMemberAsync(
+                selectedWorkspace.Id,
+                member.UserId);
+            if (!removed)
+            {
+                memberOperationError = "Membership was not removed. The API may require related board access or task dependencies to be resolved first.";
+                return;
+            }
+
+            pendingRemovalUserId = null;
+            await LoadMembersAsync();
+        }
+        catch (HttpRequestException)
+        {
+            memberOperationError = "The workspace service could not be reached. Membership was not confirmed as removed.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void RequestWorkspaceDeletion(WorkspaceResponse workspace)
+    {
+        workspacePendingDeletion = workspace;
+        deleteWorkspaceError = null;
+    }
+
+    private void CancelWorkspaceDeletion()
+    {
+        if (!isSubmitting)
+        {
+            workspacePendingDeletion = null;
+            deleteWorkspaceError = null;
+        }
+    }
+
+    private async Task DeleteWorkspaceAsync()
+    {
+        if (workspacePendingDeletion is null || isSubmitting)
+        {
+            return;
+        }
+
+        var workspace = workspacePendingDeletion;
+        isSubmitting = true;
+        deleteWorkspaceError = null;
+        try
+        {
+            var deleted = await WorkspaceApiService.DeleteAsync(workspace.Id);
+            if (!deleted)
+            {
+                deleteWorkspaceError = "The workspace was not deleted. Existing projects, boards, or members may block deletion; none were removed.";
+                return;
+            }
+
+            workspacePendingDeletion = null;
+            if (selectedWorkspace?.Id == workspace.Id)
+            {
+                CloseWorkspaceDetails();
+            }
+
+            var targetPage = workspacePage?.Items.Count == 1 && currentWorkspacePage > 1
+                ? currentWorkspacePage - 1
+                : currentWorkspacePage;
+            await LoadWorkspacesAsync(targetPage);
+        }
+        catch (HttpRequestException)
+        {
+            deleteWorkspaceError = "The workspace service could not be reached. The workspace was not deleted.";
+        }
+        catch (JsonException)
+        {
+            deleteWorkspaceError = "The workspace service returned an invalid response. Refresh the list to confirm the result.";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private static bool Matches(string value, string? search) =>
+        string.IsNullOrWhiteSpace(search) ||
+        value.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+    private static string GetFullName(string firstName, string lastName)
+    {
+        var fullName = $"{firstName} {lastName}".Trim();
+        return string.IsNullOrWhiteSpace(fullName) ? "Unnamed account" : fullName;
+    }
+
+    public void Dispose()
+    {
+        workspaceSearchDebounce?.Cancel();
+        workspaceSearchDebounce?.Dispose();
+        candidateSearchDebounce?.Cancel();
+        candidateSearchDebounce?.Dispose();
+    }
+}

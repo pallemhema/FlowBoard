@@ -1,8 +1,5 @@
 @page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}"
-
-@using FlowBoard.Shared.DTOs.Boards
-@using FlowBoard.Shared.DTOs.BoardColumns
-@using FlowBoard.Shared.DTOs.BoardMembers
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 @inject IBoardApiService BoardApiService
 @inject IBoardColumnApiService BoardColumnApiService
@@ -70,9 +67,28 @@
                         @board.Description
                     </p>
                 }
+
+                <dl class="d-flex flex-wrap gap-3 mt-3 mb-0 small" aria-label="Board information">
+                    <div>
+                        <dt class="text-muted fw-normal">Workspace</dt>
+                        <dd class="mb-0 fw-semibold">@board.WorkspaceName</dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted fw-normal">Project</dt>
+                        <dd class="mb-0 fw-semibold">
+                            @(string.IsNullOrWhiteSpace(board.ProjectName) ? "No associated project" : board.ProjectName)
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-muted fw-normal">Purpose</dt>
+                        <dd class="mb-0 fw-semibold">
+                            @(board.Purpose == BoardPurpose.GeneralLearning ? "General / Learning" : "Project")
+                        </dd>
+                    </div>
+                </dl>
             </div>
 
-            @if (!isConfirmingBoardDelete)
+            @if (board.CanManageBoard && !isConfirmingBoardDelete)
             {
                 <div class="d-flex flex-wrap gap-2 align-items-start">
                     <button class="btn btn-outline-secondary"
@@ -84,6 +100,14 @@
                             disabled="@isDeletingBoard">
                         <i class="bi bi-trash me-2" aria-hidden="true"></i>Delete
                     </button>
+                </div>
+            }
+
+            @if (!board.CanManageBoard)
+            {
+                <div class="alert alert-info" role="status">
+                    You can view this board and its contents. Board management is restricted to authorized board managers.
+                    Approval requests are not currently available.
                 </div>
             }
 
@@ -140,10 +164,13 @@
                     </p>
                 </div>
 
-                <button class="btn btn-primary"
-                        @onclick="OpenCreateColumn">
-                    <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>New column
-                </button>
+                @if (board.CanManageBoard)
+                {
+                    <button class="btn btn-primary"
+                            @onclick="OpenCreateColumn">
+                        <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>New column
+                    </button>
+                }
 
             </div>
 
@@ -178,7 +205,7 @@
                     Title="@(string.IsNullOrWhiteSpace(columnSearch) ? "No columns yet" : "No columns match your search")"
                     Message="@(string.IsNullOrWhiteSpace(columnSearch) ? "Create a column to organize this board." : "Clear the search to see all columns.")" />
 
-                @if (string.IsNullOrWhiteSpace(columnSearch))
+                @if (string.IsNullOrWhiteSpace(columnSearch) && board.CanManageBoard)
                 {
                     <p class="text-muted text-center mt-3">Use New column to add the first step to this board.</p>
                 }
@@ -189,6 +216,7 @@
                     <CascadingValue Name="BoardId" Value="BoardId">
                         <BoardColumnList
                             Columns="@PagedColumns"
+                            CanManageBoard="@board.CanManageBoard"
                             OnCreate="@OpenCreateColumn"
                             OnEdit="@EditColumn"
                             OnDelete="@DeleteColumn" />
@@ -220,10 +248,13 @@
                     </p>
                 </div>
 
-                <button class="btn btn-primary"
-                        @onclick="OpenAddMember">
-                    <i class="bi bi-person-plus me-2" aria-hidden="true"></i>Add member
-                </button>
+                @if (board.CanManageBoard)
+                {
+                    <button class="btn btn-primary"
+                            @onclick="OpenAddMember">
+                        <i class="bi bi-person-plus me-2" aria-hidden="true"></i>Add member
+                    </button>
+                }
 
             </div>
 
@@ -262,6 +293,7 @@
             {
                 <BoardMemberList
                     Members="@members"
+                    CanManageBoard="@board.CanManageBoard"
                     OnEditRole="@EditMemberRole"
                     OnRemove="@RemoveMember" />
 

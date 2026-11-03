@@ -1,5 +1,6 @@
 
 @page "/workspaces"
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 
 @inject IWorkspaceApiService WorkspaceApiService
@@ -14,11 +15,15 @@
             <h1 class="page-title">Workspaces</h1>
             <p class="page-subtitle">A home for your teams, boards, and projects.</p>
         </div>
-        <button class="btn btn-primary"
-                @onclick="OpenCreate">
-            <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
-            New workspace
-        </button>
+        <AuthorizeView Policy="@AuthorizationPolicies.AdminOrManager">
+            <Authorized>
+                <button class="btn btn-primary"
+                        @onclick="OpenCreate">
+                    <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
+                    New workspace
+                </button>
+            </Authorized>
+        </AuthorizeView>
     </header>
 
     <div class="search-wrap mb-4">
@@ -53,6 +58,7 @@
             @foreach (var workspace in workspaces)
             {
                 <WorkspaceCard
+                    @key="workspace.Id"
                     Workspace="workspace"
                     OnOpen="OpenWorkspace" />
             }
@@ -69,6 +75,10 @@
 </div>
 
 @code {
+
+    [Parameter]
+    public string WorkspaceRoutePrefix { get; set; }
+        = "/workspaces";
 
     private List<WorkspaceResponse> workspaces = [];
 
@@ -153,38 +163,16 @@
     private void OpenCreate()
     {
         Navigation.NavigateTo(
-            "/workspaces/create");
+            WorkspaceRoutePrefix == "/manager/workspaces"
+                ? "/manager/workspaces/create"
+                : "/workspaces/create");
     }
 
     private void OpenWorkspace(
         WorkspaceResponse workspace)
     {
         Navigation.NavigateTo(
-            $"/workspaces/{workspace.Id}");
-    }
-
-    private void EditWorkspace(
-        WorkspaceResponse workspace)
-    {
-        Navigation.NavigateTo(
-            $"/workspaces/{workspace.Id}/edit");
-    }
-
-    private async Task DeleteWorkspace(
-        WorkspaceResponse workspace)
-    {
-        var deleted =
-            await WorkspaceApiService.DeleteAsync(
-                workspace.Id);
-
-        if (!deleted)
-        {
-            return;
-        }
-
-        workspaces.Remove(workspace);
-
-        StateHasChanged();
+            $"{WorkspaceRoutePrefix.TrimEnd('/')}/{workspace.Id}");
     }
 
 }

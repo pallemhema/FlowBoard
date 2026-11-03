@@ -9,7 +9,8 @@ public static class RefreshTokenCookieOptions
     public static CookieOptions Create(
         IHostEnvironment environment,
         bool requestIsHttps,
-        int? expirationDays = null)
+        int? expirationDays = null,
+        DateTimeOffset? expiresAt = null)
     {
         var options = new CookieOptions
         {
@@ -19,7 +20,11 @@ public static class RefreshTokenCookieOptions
             Path = "/",
         };
 
-        if (expirationDays.HasValue)
+        if (expiresAt.HasValue)
+        {
+            options.Expires = expiresAt.Value;
+        }
+        else if (expirationDays.HasValue)
         {
             options.Expires = DateTimeOffset.UtcNow.AddDays(
                 expirationDays.Value);

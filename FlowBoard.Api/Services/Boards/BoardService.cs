@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using FlowBoard.Shared.DTOs.Common;
 using System.Data;
 using SharedBoardPurpose = FlowBoard.Shared.Enums.BoardPurpose;
+using SharedBoardMemberRole = FlowBoard.Shared.Enums.BoardMemberRole;
 
 namespace FlowBoard.Api.Services.Boards;
 
@@ -61,7 +62,10 @@ public class BoardService : IBoardService
         await _dbContext.SaveChangesAsync(
             cancellationToken);
 
-        return MapToResponse(board);
+        return await GetBoardResponseAsync(
+            board.Id,
+            currentUserId,
+            cancellationToken);
     }
 
     // ============================================================
@@ -116,7 +120,12 @@ public class BoardService : IBoardService
         // PAGINATION
         // ============================================================
 
-        var boards = await query
+        var userId = _currentUserService.UserId;
+        var boardData = await ProjectResponseData(
+                query,
+                userId,
+                IsCurrentUserAdmin(),
+                IsCurrentUserManager())
             .OrderBy(x => x.Name)
             .Skip(
                 (request.Page - 1) *
@@ -130,7 +139,7 @@ public class BoardService : IBoardService
 
         return new PagedResponse<BoardResponse>
         {
-            Items = boards
+            Items = boardData
                 .Select(MapToResponse)
                 .ToList(),
 
@@ -155,7 +164,10 @@ public class BoardService : IBoardService
         var access = await _boardAuthorizationService.EnsureCanViewAsync(
             boardId,
             cancellationToken);
-        return MapToResponse(access.Board);
+        return await GetBoardResponseAsync(
+            access.Board.Id,
+            _currentUserService.UserId,
+            cancellationToken);
     }
 
     // ============================================================
@@ -358,8 +370,61 @@ public class BoardService : IBoardService
     // MAPPING
     // ============================================================
 
+    private IQueryable<BoardResponseData> ProjectResponseData(
+        IQueryable<Board> query,
+        Guid currentUserId,
+        bool isAdmin,
+        bool isManager) =>
+        query.Select(board => new BoardResponseData
+        {
+            Id = board.Id,
+            Name = board.Name,
+            Description = board.Description,
+            WorkspaceId = board.WorkspaceId,
+            WorkspaceName = board.Workspace.Name,
+            ProjectId = board.ProjectId,
+            ProjectName = board.Project == null
+                ? null
+                : board.Project.Name,
+            Purpose = board.Purpose,
+            CurrentUserRole = board.OwnerId == currentUserId
+                ? BoardMemberRole.Owner
+                : board.Members
+                    .Where(member => member.UserId == currentUserId)
+                    .Select(member => (BoardMemberRole?)member.Role)
+                    .FirstOrDefault(),
+            OwnerId = board.OwnerId,
+            CanManageBoard = isAdmin ||
+                board.OwnerId == currentUserId ||
+                board.Workspace.OwnerId == currentUserId ||
+                (isManager &&
+                 board.ProjectId.HasValue &&
+                 board.Project!.WorkspaceId == board.WorkspaceId &&
+                 board.Project.ManagerId == currentUserId &&
+                 (board.Workspace.OwnerId == currentUserId ||
+                  board.Workspace.Members.Any(member =>
+                      member.UserId == currentUserId))),
+            CreatedAt = board.CreatedAt,
+            ModifiedAt = board.ModifiedAt
+        });
+
+    private async Task<BoardResponse> GetBoardResponseAsync(
+        Guid boardId,
+        Guid currentUserId,
+        CancellationToken cancellationToken)
+    {
+        var boardData = await ProjectResponseData(
+                _dbContext.Boards.AsNoTracking().Where(board => board.Id == boardId),
+                currentUserId,
+                IsCurrentUserAdmin(),
+                IsCurrentUserManager())
+            .SingleAsync(cancellationToken);
+
+        return MapToResponse(boardData);
+    }
+
     private static BoardResponse MapToResponse(
-        Board board)
+        BoardResponseData board)
     {
         return new BoardResponse
         {
@@ -367,11 +432,46 @@ public class BoardService : IBoardService
             Name = board.Name,
             Description = board.Description,
             WorkspaceId = board.WorkspaceId,
+            WorkspaceName = board.WorkspaceName,
             ProjectId = board.ProjectId,
+            ProjectName = board.ProjectName,
             Purpose = (SharedBoardPurpose)board.Purpose,
+            CurrentUserRole = board.CurrentUserRole.HasValue
+                ? (SharedBoardMemberRole?)board.CurrentUserRole.Value
+                : null,
             OwnerId = board.OwnerId,
+            CanManageBoard = board.CanManageBoard,
             CreatedAt = board.CreatedAt,
             ModifiedAt = board.ModifiedAt
         };
+    }
+
+    private sealed class BoardResponseData
+    {
+        public Guid Id { get; init; }
+
+        public string Name { get; init; } = string.Empty;
+
+        public string? Description { get; init; }
+
+        public Guid WorkspaceId { get; init; }
+
+        public string WorkspaceName { get; init; } = string.Empty;
+
+        public Guid? ProjectId { get; init; }
+
+        public string? ProjectName { get; init; }
+
+        public BoardPurpose Purpose { get; init; }
+
+        public BoardMemberRole? CurrentUserRole { get; init; }
+
+        public Guid OwnerId { get; init; }
+
+        public bool CanManageBoard { get; init; }
+
+        public DateTime CreatedAt { get; init; }
+
+        public DateTime? ModifiedAt { get; init; }
     }
 }

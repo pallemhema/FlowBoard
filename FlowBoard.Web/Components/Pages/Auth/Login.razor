@@ -111,8 +111,11 @@
 @page "/login"
 
 @using FlowBoard.Shared.DTOs.Auth
+@using FlowBoard.Web.Navigation
 @using FlowBoard.Web.Services.Authentication
 
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAuthorizationService AuthorizationService
 @inject IAuthenticationService AuthenticationService
 @inject NavigationManager Navigation
 
@@ -160,7 +163,7 @@
 
         </EditForm>
         <p class="text-muted text-center small mt-4 mb-0">
-            New to FlowBoard? <NavLink href="/register">Create an account</NavLink>
+            Invitations are issued by your FlowBoard administrator.
         </p>
     </section>
 </div>
@@ -170,6 +173,24 @@
     private readonly LoginRequest model = new();
 
     private bool isSubmitting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authenticationState =
+            await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authenticationState.User;
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        Navigation.NavigateTo(
+            AppNavigation.DashboardHrefForPolicies(
+                await AppNavigation.GetAuthorizedPoliciesAsync(
+                    user,
+                    AuthorizationService)),
+            replace: true);
+    }
 
     private async Task LoginAsync()
     {
@@ -190,7 +211,13 @@
                 return;
             }
 
-            Navigation.NavigateTo("/");
+            var authenticationState =
+                await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            Navigation.NavigateTo(
+                AppNavigation.DashboardHrefForPolicies(
+                    await AppNavigation.GetAuthorizedPoliciesAsync(
+                        authenticationState.User,
+                        AuthorizationService)));
         }
         finally
         {

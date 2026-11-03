@@ -15,3 +15,4 @@
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.pdb
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.genruntimeconfig.cache
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/ref/FlowBoard.Infrastructure.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Infrastructure/obj/Debug/net8.0/FlowBoard.Infrastructure.sourcelink.json

@@ -1,0 +1,93 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+
+    <div>
+        <h2 class="section-heading mb-0">Cards</h2>
+    </div>
+
+    @if (CanManageBoard && Cards.Count > 0)
+    {
+        <button class="btn btn-primary btn-sm"
+                @onclick="OnCreate">
+            <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>
+            Add Card
+        </button>
+    }
+
+</div>
+
+@if (Cards.Count == 0)
+{
+    <div class="empty-state py-4">
+
+            @if (!string.IsNullOrWhiteSpace(SearchTerm))
+            {
+                <h6>No cards match your search</h6>
+                <p class="text-muted mb-0">Clear the search to see all cards in this column.</p>
+            }
+            else
+            {
+                <h6>No cards yet</h6>
+                <p class="text-muted mb-3">
+                    @(CanManageBoard
+                        ? "Create a card to start working on this column."
+                        : "There are no cards in this column yet.")
+                </p>
+                @if (CanManageBoard)
+                {
+                    <button class="btn btn-primary btn-sm" @onclick="OnCreate">
+                        <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>
+                        Create First Card
+                    </button>
+                }
+            }
+
+    </div>
+}
+else
+{
+    <div class="entity-grid">
+
+        @foreach (var card in Cards)
+        {
+            <CardCard
+                @key="card.Id"
+                Card="card"
+                CanManageBoard="CanManageBoard"
+                OnOpen="OnOpen"
+                OnEdit="OnEdit"
+                OnDelete="OnDelete" />
+        }
+
+    </div>
+}
+
+
+@code {
+
+    // ============================================================
+    // PARAMETERS
+    // ============================================================
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CardResponse> Cards { get; set; } = [];
+
+    [Parameter]
+    public bool CanManageBoard { get; set; }
+
+    [Parameter]
+    public string? SearchTerm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCreate { get; set; }
+
+    [Parameter]
+    public EventCallback<CardResponse> OnOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<CardResponse> OnEdit { get; set; }
+
+    [Parameter]
+    public EventCallback<CardResponse> OnDelete { get; set; }
+
+
+}

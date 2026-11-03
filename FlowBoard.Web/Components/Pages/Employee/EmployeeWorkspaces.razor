@@ -1,0 +1,431 @@
+@page "/employee/workspaces"
+@page "/employee/workspaces/{Id:guid}"
+@attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
+@implements IDisposable
+
+@using System.Net.Http
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Projects
+@using FlowBoard.Shared.DTOs.Workspaces
+@using FlowBoard.Shared.Enums
+@using FlowBoard.Web.Components.Pages.Workspaces
+
+@inject IWorkspaceApiService WorkspaceApiService
+@inject IProjectApiService ProjectApiService
+@inject IBoardApiService BoardApiService
+
+@if (Id is null)
+{
+    <Workspaces WorkspaceRoutePrefix="/employee/workspaces" />
+}
+else
+{
+    <PageTitle>@(workspace?.Name ?? "My workspace") | FlowBoard</PageTitle>
+
+    <div class="page-shell">
+        <a class="btn btn-link px-0 mb-3"
+           href="/employee/workspaces">
+            <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>
+            Back to my workspaces
+        </a>
+
+        @if (isLoadingWorkspace)
+        {
+            <div class="text-center py-5" role="status" aria-live="polite">
+                <span class="spinner-border spinner-border-sm text-primary me-2" aria-hidden="true"></span>
+                Loading workspace...
+            </div>
+        }
+        else if (workspace is null)
+        {
+            <div class="alert alert-danger" role="alert">
+                @workspaceError
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger ms-2"
+                        @onclick="RetryLoadingAsync">
+                    Try again
+                </button>
+            </div>
+        }
+        else
+        {
+            <PageHeader Title="@workspace.Name"
+                        Eyebrow="My workspace"
+                        Description="Projects and boards you can access in this workspace." />
+
+            <div class="mb-3">
+                <span class="text-secondary small d-block mb-1">Workspace owner</span>
+                <WorkspaceOwner OwnerName="@workspace.OwnerName"
+                                OwnerEmail="@workspace.OwnerEmail"
+                                SizeRem="1.75" />
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(workspace.Description))
+            {
+                <p class="text-secondary mb-4">@workspace.Description</p>
+            }
+
+            <div class="row g-3 mb-4" aria-label="Accessible workspace resources">
+                <div class="col-6 col-lg-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <p class="text-secondary mb-1">Accessible projects</p>
+                            <strong class="fs-4">@(isLoadingProjects ? "—" : accessibleProjects.Count)</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6 col-lg-3">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <p class="text-secondary mb-1">Accessible boards</p>
+                            <strong class="fs-4">@(isLoadingBoards ? "—" : accessibleBoards.Count)</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <section class="mb-5" aria-labelledby="accessible-projects-title">
+                <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+                    <h2 class="h4 mb-0" id="accessible-projects-title">Accessible projects</h2>
+                    <a class="btn btn-sm btn-outline-primary"
+                       href="@($"/employee/projects?workspaceId={workspace.Id}")">
+                        View in My Projects
+                    </a>
+                </div>
+
+                @if (isLoadingProjects)
+                {
+                    <div class="py-3" role="status">Loading accessible projects...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(projectsError))
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @projectsError
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger ms-2"
+                                @onclick="RetryLoadingAsync">
+                            Try again
+                        </button>
+                    </div>
+                }
+                else if (accessibleProjects.Count == 0)
+                {
+                    <EmptyState Title="No accessible projects"
+                                Message="Projects you are authorized to access in this workspace will appear here." />
+                }
+                else
+                {
+                    <div class="list-group">
+                        @foreach (var project in accessibleProjects)
+                        {
+                            <a class="list-group-item list-group-item-action"
+                               href="@($"/employee/projects?workspaceId={workspace.Id}&projectId={project.ProjectId}")"
+                               @key="project.ProjectId">
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                    <strong>@project.Name</strong>
+                                    <span class="badge text-bg-light">@project.Status</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(project.Description))
+                                {
+                                    <span class="d-block text-secondary small mt-1">@project.Description</span>
+                                }
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section aria-labelledby="accessible-boards-title">
+                <h2 class="h4 mb-3" id="accessible-boards-title">Accessible boards</h2>
+
+                @if (isLoadingBoards)
+                {
+                    <div class="py-3" role="status">Loading accessible boards...</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(boardsError))
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @boardsError
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger ms-2"
+                                @onclick="RetryLoadingAsync">
+                            Try again
+                        </button>
+                    </div>
+                }
+                else if (accessibleBoards.Count == 0)
+                {
+                    <EmptyState Title="No accessible boards"
+                                Message="Boards you are authorized to access in this workspace will appear here." />
+                }
+                else
+                {
+                    <div class="list-group">
+                        @foreach (var board in accessibleBoards)
+                        {
+                            <a class="list-group-item list-group-item-action"
+                               href="@($"/workspaces/{board.WorkspaceId}/boards/{board.Id}")"
+                               @key="board.Id">
+                                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                    <strong>@board.Name</strong>
+                                    <span class="d-flex flex-wrap gap-2">
+                                        <span class="badge text-bg-light">
+                                            @(board.Purpose == BoardPurpose.GeneralLearning ? "General / Learning" : "Project")
+                                        </span>
+                                        @if (board.CurrentUserRole.HasValue)
+                                        {
+                                            <span class="badge text-bg-secondary">@board.CurrentUserRole.Value</span>
+                                        }
+                                    </span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(board.Description))
+                                {
+                                    <span class="d-block text-secondary small mt-1">@board.Description</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(board.ProjectName))
+                                {
+                                    <span class="d-block text-secondary small mt-1">Project: @board.ProjectName</span>
+                                }
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+@code {
+    private const int ResourcePageSize = 100;
+
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private WorkspaceResponse? workspace;
+    private List<ProjectResponse> accessibleProjects = [];
+    private List<BoardResponse> accessibleBoards = [];
+    private string? workspaceError;
+    private string? projectsError;
+    private string? boardsError;
+    private bool isLoadingWorkspace;
+    private bool isLoadingProjects;
+    private bool isLoadingBoards;
+    private Guid? loadedWorkspaceId;
+    private long loadVersion;
+    private CancellationTokenSource? activeLoad;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id is not Guid workspaceId || loadedWorkspaceId == workspaceId)
+        {
+            return;
+        }
+
+        loadedWorkspaceId = workspaceId;
+        await LoadWorkspaceAsync(workspaceId);
+    }
+
+    private async Task RetryLoadingAsync()
+    {
+        if (Id is Guid workspaceId)
+        {
+            await LoadWorkspaceAsync(workspaceId);
+        }
+    }
+
+    private async Task LoadWorkspaceAsync(Guid workspaceId)
+    {
+        activeLoad?.Cancel();
+        activeLoad?.Dispose();
+        var cancellation = activeLoad = new CancellationTokenSource();
+        var requestVersion = ++loadVersion;
+
+        workspace = null;
+        accessibleProjects = [];
+        accessibleBoards = [];
+        workspaceError = null;
+        projectsError = null;
+        boardsError = null;
+        isLoadingWorkspace = true;
+        isLoadingProjects = false;
+        isLoadingBoards = false;
+
+        try
+        {
+            workspace = await WorkspaceApiService.GetByIdAsync(
+                workspaceId,
+                cancellation.Token);
+
+            if (requestVersion != loadVersion)
+            {
+                return;
+            }
+
+            if (workspace is null)
+            {
+                workspaceError = "This workspace is unavailable or you do not have access.";
+                return;
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            workspaceError = "The workspace service could not be reached.";
+            return;
+        }
+        catch (JsonException)
+        {
+            workspaceError = "The workspace service returned an invalid response.";
+            return;
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingWorkspace = false;
+            }
+        }
+
+        isLoadingProjects = true;
+        isLoadingBoards = true;
+        await Task.WhenAll(
+            LoadAccessibleProjectsAsync(workspaceId, requestVersion, cancellation.Token),
+            LoadAccessibleBoardsAsync(workspaceId, requestVersion, cancellation.Token));
+    }
+
+    private async Task LoadAccessibleProjectsAsync(
+        Guid workspaceId,
+        long requestVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var results = new List<ProjectResponse>();
+            var page = 1;
+            int totalPages;
+            do
+            {
+                var response = await ProjectApiService.GetMineAsync(
+                    new ProjectQueryRequest
+                    {
+                        WorkspaceId = workspaceId,
+                        Page = page,
+                        PageSize = ResourcePageSize
+                    },
+                    cancellationToken);
+
+                if (response is null)
+                {
+                    if (requestVersion == loadVersion)
+                    {
+                        projectsError = "Unable to load projects you can access in this workspace.";
+                    }
+                    return;
+                }
+
+                results.AddRange(response.Items);
+                totalPages = response.TotalPages;
+                page++;
+            } while (page <= totalPages);
+
+            accessibleProjects = results;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                projectsError = "The project service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                projectsError = "The project service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingProjects = false;
+            }
+        }
+    }
+
+    private async Task LoadAccessibleBoardsAsync(
+        Guid workspaceId,
+        long requestVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var results = new List<BoardResponse>();
+            var page = 1;
+            int totalPages;
+            do
+            {
+                var response = await BoardApiService.GetAsync(
+                    new BoardQueryRequest
+                    {
+                        WorkspaceId = workspaceId,
+                        Page = page,
+                        PageSize = ResourcePageSize
+                    },
+                    cancellationToken);
+
+                if (response is null)
+                {
+                    if (requestVersion == loadVersion)
+                    {
+                        boardsError = "Unable to load boards you can access in this workspace.";
+                    }
+                    return;
+                }
+
+                results.AddRange(response.Items);
+                totalPages = response.TotalPages;
+                page++;
+            } while (page <= totalPages);
+
+            accessibleBoards = results;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                boardsError = "The board service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                boardsError = "The board service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingBoards = false;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        activeLoad?.Cancel();
+        activeLoad?.Dispose();
+    }
+}

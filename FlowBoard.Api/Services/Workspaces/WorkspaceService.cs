@@ -32,10 +32,10 @@ public class WorkspaceService : IWorkspaceService
         CreateWorkspaceRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (!IsCurrentUserAdmin())
+        if (!IsCurrentUserAdmin() && !IsCurrentUserManager())
         {
             throw new ForbiddenException(
-                "Only an administrator can create a workspace.");
+                "Only an administrator or Manager can create a workspace.");
         }
 
         var userId = _currentUserService.UserId;
@@ -52,7 +52,7 @@ public class WorkspaceService : IWorkspaceService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return MapToResponse(workspace);
+        return await GetWorkspaceResponseAsync(workspace.Id, cancellationToken);
     }
 
     public async Task<PagedResponse<WorkspaceResponse>> GetAsync(
@@ -61,12 +61,13 @@ public class WorkspaceService : IWorkspaceService
     {
         var currentUserId = _currentUserService.UserId;
         var isAdmin = IsCurrentUserAdmin();
+        var isManager = IsCurrentUserManager();
 
         var query = _dbContext.Workspaces
             .AsNoTracking()
             .Where(workspace =>
                 isAdmin ||
-                workspace.OwnerId == currentUserId ||
+                (isManager && workspace.OwnerId == currentUserId) ||
                 workspace.Members.Any(member => member.UserId == currentUserId));
 
         // ============================================================
@@ -107,6 +108,13 @@ public class WorkspaceService : IWorkspaceService
                 (request.Page - 1) *
                 request.PageSize)
             .Take(request.PageSize)
+            .Select(workspace => new
+            {
+                Workspace = workspace,
+                OwnerName = (workspace.Owner.FirstName + " " +
+                             workspace.Owner.LastName).Trim(),
+                OwnerEmail = workspace.Owner.Email
+            })
             .ToListAsync(cancellationToken);
 
         // ============================================================
@@ -116,7 +124,10 @@ public class WorkspaceService : IWorkspaceService
         return new PagedResponse<WorkspaceResponse>
         {
             Items = workspaces
-                .Select(MapToResponse)
+                .Select(item => MapToResponse(
+                    item.Workspace,
+                    item.OwnerName,
+                    item.OwnerEmail))
                 .ToList(),
 
             Page = request.Page,
@@ -133,18 +144,29 @@ public class WorkspaceService : IWorkspaceService
         Guid workspaceId,
         CancellationToken cancellationToken = default)
     {
-        var workspace = await _dbContext.Workspaces
+        var workspaceData = await _dbContext.Workspaces
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Id == workspaceId, cancellationToken);
+            .Where(x => x.Id == workspaceId)
+            .Select(workspace => new
+            {
+                Workspace = workspace,
+                OwnerName = (workspace.Owner.FirstName + " " +
+                             workspace.Owner.LastName).Trim(),
+                OwnerEmail = workspace.Owner.Email
+            })
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (workspace is null)
+        if (workspaceData is null)
         {
             throw new NotFoundException(
                 "Workspace was not found.");
         }
 
-        await EnsureReadAccessAsync(workspace, cancellationToken);
-        return MapToResponse(workspace);
+        await EnsureReadAccessAsync(workspaceData.Workspace, cancellationToken);
+        return MapToResponse(
+            workspaceData.Workspace,
+            workspaceData.OwnerName,
+            workspaceData.OwnerEmail);
     }
 
     public async Task<WorkspaceResponse> UpdateAsync(
@@ -170,7 +192,7 @@ public class WorkspaceService : IWorkspaceService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return MapToResponse(workspace);
+        return await GetWorkspaceResponseAsync(workspace.Id, cancellationToken);
     }
 
     public async Task DeleteAsync(
@@ -437,7 +459,7 @@ public class WorkspaceService : IWorkspaceService
         }
 
         var currentUserId = _currentUserService.UserId;
-        if (workspace.OwnerId == currentUserId)
+        if (IsCurrentUserManager() && workspace.OwnerId == currentUserId)
         {
             return;
         }
@@ -513,8 +535,32 @@ public class WorkspaceService : IWorkspaceService
         };
     }
 
+    private IQueryable<WorkspaceResponse> GetWorkspaceResponseQuery() =>
+        _dbContext.Workspaces
+            .AsNoTracking()
+            .Select(workspace => new WorkspaceResponse
+            {
+                Id = workspace.Id,
+                Name = workspace.Name,
+                Description = workspace.Description,
+                OwnerId = workspace.OwnerId,
+                OwnerName = (workspace.Owner.FirstName + " " +
+                             workspace.Owner.LastName).Trim(),
+                OwnerEmail = workspace.Owner.Email,
+                CreatedAt = workspace.CreatedAt,
+                ModifiedAt = workspace.ModifiedAt
+            });
+
+    private async Task<WorkspaceResponse> GetWorkspaceResponseAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken) =>
+        await GetWorkspaceResponseQuery()
+            .FirstAsync(workspace => workspace.Id == workspaceId, cancellationToken);
+
     private static WorkspaceResponse MapToResponse(
-        Workspace workspace)
+        Workspace workspace,
+        string? ownerName,
+        string? ownerEmail)
     {
         return new WorkspaceResponse
         {
@@ -522,6 +568,8 @@ public class WorkspaceService : IWorkspaceService
             Name = workspace.Name,
             Description = workspace.Description,
             OwnerId = workspace.OwnerId,
+            OwnerName = ownerName,
+            OwnerEmail = ownerEmail,
             CreatedAt = workspace.CreatedAt,
             ModifiedAt = workspace.ModifiedAt
         };

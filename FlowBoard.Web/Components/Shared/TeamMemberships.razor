@@ -1,0 +1,449 @@
+@implements IDisposable
+
+@using System.Text.Json
+
+@inject ITeamApiService TeamApiService
+
+<section class="team-memberships-panel" aria-labelledby="team-memberships-title">
+    <div class="team-memberships-panel-heading">
+        <div>
+            <h2 id="team-memberships-title">Team Memberships</h2>
+            <p>Teams you belong to through team membership. This is separate from reporting relationships.</p>
+        </div>
+        @if (teamPage is not null)
+        {
+            <span class="team-memberships-total">@teamPage.TotalCount.ToString("N0") teams</span>
+        }
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(teamListError))
+    {
+        <div class="team-memberships-error" role="alert">
+            <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+            <span>@teamListError</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadTeamsAsync(currentTeamPage)">
+                Retry
+            </button>
+        </div>
+    }
+    else if (isLoadingTeams)
+    {
+        <div class="team-memberships-loading" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <span>Loading your teams…</span>
+        </div>
+    }
+    else if (teamPage is { Items.Count: 0 })
+    {
+        <EmptyState Title="No team memberships"
+                    Message="Teams you belong to through team membership will appear here." />
+    }
+    else if (teamPage is not null)
+    {
+        <div class="team-membership-cards">
+            @foreach (var team in teamPage.Items)
+            {
+                <article class="team-membership-card" @key="team.TeamId">
+                    <div class="team-membership-card-heading">
+                        <span class="team-membership-card-icon" aria-hidden="true">
+                            <i class="bi bi-diagram-3"></i>
+                        </span>
+                        <div class="team-membership-card-title">
+                            <h3>@team.Name</h3>
+                            <span>@team.MemberCount @(team.MemberCount == 1 ? "member" : "members")</span>
+                        </div>
+                    </div>
+                    <p class="team-membership-description">
+                        @(string.IsNullOrWhiteSpace(team.Description) ? "No description provided." : team.Description)
+                    </p>
+                    <div class="team-membership-card-footer">
+                        <span class="team-membership-created">Created @team.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary"
+                                @onclick="() => OpenTeamAsync(team.TeamId)">
+                            <i class="bi bi-eye me-1" aria-hidden="true"></i>View team
+                        </button>
+                    </div>
+                </article>
+            }
+        </div>
+
+        @if (teamPage.TotalCount > teamPage.PageSize)
+        {
+            <Pagination CurrentPage="@teamPage.Page"
+                        TotalPages="@teamPage.TotalPages"
+                        TotalCount="@teamPage.TotalCount"
+                        PageChanged="LoadTeamsAsync" />
+        }
+    }
+</section>
+
+@if (selectedTeamId.HasValue)
+{
+    <div class="team-membership-detail-backdrop" @onclick="CloseTeamDetails">
+        <section class="team-membership-detail-panel"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="team-membership-detail-title"
+                 @onclick:stopPropagation>
+            <div class="team-membership-detail-header">
+                <div>
+                    <p class="section-label mb-1">Team details</p>
+                    <h2 id="team-membership-detail-title">@(selectedTeam?.Name ?? (isLoadingTeamDetails ? "Loading team…" : "Team details"))</h2>
+                </div>
+                <button type="button" class="btn-close" aria-label="Close team details" @onclick="CloseTeamDetails"></button>
+            </div>
+
+            @if (isLoadingTeamDetails)
+            {
+                <div class="team-memberships-loading team-membership-detail-loading" role="status" aria-live="polite">
+                    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                    <span>Loading team information…</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(teamDetailsError))
+            {
+                <div class="team-memberships-error" role="alert">
+                    <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                    <span>@teamDetailsError</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadTeamDetailsAsync(selectedTeamId.Value)">
+                        Retry
+                    </button>
+                </div>
+            }
+            else if (selectedTeam is not null)
+            {
+                <div class="team-membership-detail-summary">
+                    <div>
+                        <span class="team-membership-detail-label">Description</span>
+                        <p>@(string.IsNullOrWhiteSpace(selectedTeam.Description) ? "No description provided." : selectedTeam.Description)</p>
+                    </div>
+                    <div class="team-membership-detail-meta">
+                        <span><i class="bi bi-people me-2" aria-hidden="true"></i>@selectedTeam.MemberCount @(selectedTeam.MemberCount == 1 ? "member" : "members")</span>
+                        <span><i class="bi bi-calendar3 me-2" aria-hidden="true"></i>Created @selectedTeam.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                    </div>
+                </div>
+
+                <section class="team-membership-members" aria-labelledby="team-membership-members-title">
+                    <div class="team-membership-members-heading">
+                        <div>
+                            <h3 id="team-membership-members-title">Team Members</h3>
+                            <p>These are members of this team; they are not necessarily your direct reports.</p>
+                        </div>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(memberError))
+                    {
+                        <div class="team-memberships-error compact" role="alert">
+                            <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                            <span>@memberError</span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadMembersAsync(currentMemberPage)">
+                                Retry
+                            </button>
+                        </div>
+                    }
+                    else if (isLoadingMembers)
+                    {
+                        <div class="team-membership-members-loading" role="status" aria-live="polite">
+                            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                            <span>Loading team members…</span>
+                        </div>
+                    }
+                    else if (membersPage is { Items.Count: 0 })
+                    {
+                        <EmptyState Title="No team members"
+                                    Message="This team has no members to display." />
+                    }
+                    else if (membersPage is not null)
+                    {
+                        <div class="team-membership-member-list">
+                            @foreach (var member in membersPage.Items)
+                            {
+                                <article class="team-membership-member-row" @key="member.UserId">
+                                    <UserAvatar FirstName="@member.User.FirstName"
+                                                LastName="@member.User.LastName"
+                                                SizeRem="2.25" />
+                                    <div class="team-membership-member-copy">
+                                        <strong>@GetMemberName(member.User)</strong>
+                                        <span>@member.User.Email</span>
+                                        <span class="team-membership-role">@GetRole(member.User.Role)</span>
+                                    </div>
+                                    <time datetime="@member.JoinedAt.ToString("O")">
+                                        Joined @member.JoinedAt.ToLocalTime().ToString("MMM d, yyyy")
+                                    </time>
+                                </article>
+                            }
+                        </div>
+
+                        @if (membersPage.TotalCount > membersPage.PageSize)
+                        {
+                            <Pagination CurrentPage="@membersPage.Page"
+                                        TotalPages="@membersPage.TotalPages"
+                                        TotalCount="@membersPage.TotalCount"
+                                        PageChanged="LoadMembersAsync" />
+                        }
+                    }
+                </section>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    private const int TeamPageSize = 10;
+    private const int MemberPageSize = 10;
+
+    private PagedResponse<TeamResponse>? teamPage;
+    private PagedResponse<TeamMemberResponse>? membersPage;
+    private TeamResponse? selectedTeam;
+    private Guid? selectedTeamId;
+    private string? teamListError;
+    private string? teamDetailsError;
+    private string? memberError;
+    private bool isLoadingTeams;
+    private bool isLoadingTeamDetails;
+    private bool isLoadingMembers;
+    private bool disposed;
+    private int currentTeamPage = 1;
+    private int currentMemberPage = 1;
+    private int teamRequestVersion;
+    private int teamDetailsRequestVersion;
+    private int memberRequestVersion;
+    private CancellationTokenSource? activeTeamRequest;
+    private CancellationTokenSource? activeTeamDetailsRequest;
+    private CancellationTokenSource? activeMemberRequest;
+
+    protected override Task OnInitializedAsync() => LoadTeamsAsync(1);
+
+    private async Task LoadTeamsAsync(int page)
+    {
+        activeTeamRequest?.Cancel();
+        activeTeamRequest?.Dispose();
+        activeTeamRequest = new CancellationTokenSource();
+        var cancellationToken = activeTeamRequest.Token;
+        var version = ++teamRequestVersion;
+        currentTeamPage = page;
+        isLoadingTeams = true;
+        teamListError = null;
+
+        try
+        {
+            var response = await TeamApiService.GetMineAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = TeamPageSize
+                },
+                cancellationToken);
+
+            if (version != teamRequestVersion || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                teamPage = null;
+                teamListError = "Your teams could not be loaded. Check your access and retry.";
+                return;
+            }
+
+            teamPage = response;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (version == teamRequestVersion)
+            {
+                teamPage = null;
+                teamListError = "The team service could not be reached. Check your connection and retry.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == teamRequestVersion)
+            {
+                teamPage = null;
+                teamListError = "The team service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == teamRequestVersion && !disposed)
+            {
+                isLoadingTeams = false;
+            }
+        }
+    }
+
+    private async Task OpenTeamAsync(Guid teamId)
+    {
+        selectedTeamId = teamId;
+        selectedTeam = null;
+        teamDetailsError = null;
+        membersPage = null;
+        memberError = null;
+        currentMemberPage = 1;
+
+        await Task.WhenAll(
+            LoadTeamDetailsAsync(teamId),
+            LoadMembersAsync(1));
+    }
+
+    private async Task LoadTeamDetailsAsync(Guid teamId)
+    {
+        activeTeamDetailsRequest?.Cancel();
+        activeTeamDetailsRequest?.Dispose();
+        activeTeamDetailsRequest = new CancellationTokenSource();
+        var cancellationToken = activeTeamDetailsRequest.Token;
+        var version = ++teamDetailsRequestVersion;
+        isLoadingTeamDetails = true;
+        teamDetailsError = null;
+
+        try
+        {
+            var response = await TeamApiService.GetByIdAsync(teamId, cancellationToken);
+            if (version != teamDetailsRequestVersion || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                selectedTeam = null;
+                teamDetailsError = "Team details could not be loaded. The team may no longer be available to your account.";
+                return;
+            }
+
+            selectedTeam = response;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (version == teamDetailsRequestVersion)
+            {
+                teamDetailsError = "The team service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == teamDetailsRequestVersion)
+            {
+                teamDetailsError = "The team service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == teamDetailsRequestVersion && !disposed)
+            {
+                isLoadingTeamDetails = false;
+            }
+        }
+    }
+
+    private async Task LoadMembersAsync(int page)
+    {
+        if (selectedTeamId is not Guid teamId)
+        {
+            return;
+        }
+
+        activeMemberRequest?.Cancel();
+        activeMemberRequest?.Dispose();
+        activeMemberRequest = new CancellationTokenSource();
+        var cancellationToken = activeMemberRequest.Token;
+        var version = ++memberRequestVersion;
+        currentMemberPage = page;
+        isLoadingMembers = true;
+        memberError = null;
+
+        try
+        {
+            var response = await TeamApiService.GetMembersAsync(
+                teamId,
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = MemberPageSize
+                },
+                cancellationToken);
+
+            if (version != memberRequestVersion || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                membersPage = null;
+                memberError = "Team members could not be loaded. Check your access and retry.";
+                return;
+            }
+
+            membersPage = response;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (version == memberRequestVersion)
+            {
+                membersPage = null;
+                memberError = "The team member service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == memberRequestVersion)
+            {
+                membersPage = null;
+                memberError = "The team member service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == memberRequestVersion && !disposed)
+            {
+                isLoadingMembers = false;
+            }
+        }
+    }
+
+    private void CloseTeamDetails()
+    {
+        selectedTeamId = null;
+        selectedTeam = null;
+        membersPage = null;
+        activeTeamDetailsRequest?.Cancel();
+        activeMemberRequest?.Cancel();
+        teamDetailsRequestVersion++;
+        memberRequestVersion++;
+        isLoadingTeamDetails = false;
+        isLoadingMembers = false;
+    }
+
+    private static string GetMemberName(UserDirectoryResponse user)
+    {
+        var fullName = $"{user.FirstName} {user.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(fullName) ? user.Email : fullName;
+    }
+
+    private static string GetRole(string? role) =>
+        string.IsNullOrWhiteSpace(role) ? "Role unavailable" : role;
+
+    public void Dispose()
+    {
+        disposed = true;
+        activeTeamRequest?.Cancel();
+        activeTeamRequest?.Dispose();
+        activeTeamDetailsRequest?.Cancel();
+        activeTeamDetailsRequest?.Dispose();
+        activeMemberRequest?.Cancel();
+        activeMemberRequest?.Dispose();
+    }
+}

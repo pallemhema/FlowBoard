@@ -65,62 +65,15 @@ public class AuthController : ControllerBase
             $"{!string.IsNullOrWhiteSpace(result.RefreshToken)}");
 
         SetRefreshTokenCookie(
-            result.RefreshToken);
+            result.RefreshToken,
+            result.RefreshTokenExpiresAt);
 
         Console.WriteLine(
             "WEB: Refresh token cookie set.");
 
-        return Ok(result);
+        return Ok(CreateAuthenticationResponse(result));
     }
 
-    // ============================================================
-    // REGISTER
-    // ============================================================
-
-    [HttpPost("register")]
-    public async Task<IActionResult> Register(
-        [FromBody] RegisterRequest request,
-        CancellationToken cancellationToken)
-    {
-        Console.WriteLine();
-        Console.WriteLine(
-            "========== WEB REGISTER START ==========");
-
-        Console.WriteLine(
-            $"WEB: Register request received for {request.Email}");
-
-        var result =
-            await _authApiService.RegisterBackendAsync(
-                request,
-                cancellationToken);
-
-        if (result is null)
-        {
-            Console.WriteLine(
-                "WEB: Backend registration FAILED.");
-
-            return BadRequest();
-        }
-
-        Console.WriteLine(
-            "WEB: Backend registration SUCCESS.");
-
-        Console.WriteLine(
-            $"WEB: Access token received = " +
-            $"{!string.IsNullOrWhiteSpace(result.AccessToken)}");
-
-        Console.WriteLine(
-            $"WEB: Refresh token received = " +
-            $"{!string.IsNullOrWhiteSpace(result.RefreshToken)}");
-
-        SetRefreshTokenCookie(
-            result.RefreshToken);
-
-        Console.WriteLine(
-            "WEB: Refresh token cookie set.");
-
-        return Ok(result);
-    }
     // ============================================================
     // REFRESH
     // ============================================================
@@ -166,6 +119,12 @@ public class AuthController : ControllerBase
             Console.WriteLine(
                 "WEB: Backend refresh FAILED.");
 
+            Response.Cookies.Delete(
+                RefreshTokenCookieOptions.Name,
+                RefreshTokenCookieOptions.CreateForDeletion(
+                    _environment,
+                    Request.IsHttps));
+
             return Unauthorized();
         }
 
@@ -182,7 +141,10 @@ public class AuthController : ControllerBase
                 result.RefreshToken,
                 RefreshTokenCookieOptions.Create(
                     _environment,
-                    Request.IsHttps));
+                    Request.IsHttps,
+                    expiresAt: new DateTimeOffset(
+                        result.RefreshTokenExpiresAt,
+                        TimeSpan.Zero)));
 
             Console.WriteLine(
                 "WEB: New refresh token cookie set.");
@@ -193,7 +155,7 @@ public class AuthController : ControllerBase
 
         // 4. Return new access token to Blazor
 
-        return Ok(result);
+        return Ok(CreateAuthenticationResponse(result));
     }
 
     // ============================================================
@@ -257,7 +219,8 @@ public class AuthController : ControllerBase
     // ============================================================
 
     private void SetRefreshTokenCookie(
-        string refreshToken)
+        string refreshToken,
+        DateTime refreshTokenExpiresAt)
     {
         Console.WriteLine(
             "WEB: Creating HttpOnly refresh token cookie.");
@@ -268,7 +231,9 @@ public class AuthController : ControllerBase
             RefreshTokenCookieOptions.Create(
                 _environment,
                 Request.IsHttps,
-                expirationDays: 30));
+                expiresAt: new DateTimeOffset(
+                    refreshTokenExpiresAt,
+                    TimeSpan.Zero)));
 
         Console.WriteLine(
             $"WEB: Cookie '{RefreshTokenCookieOptions.Name}' appended.");
@@ -278,5 +243,15 @@ public class AuthController : ControllerBase
 
         Console.WriteLine(
             "WEB: Refresh token is NOT exposed to JavaScript.");
+    }
+
+    private static AuthenticationResult CreateAuthenticationResponse(
+        AuthenticationResult result)
+    {
+        return new AuthenticationResult
+        {
+            AccessToken = result.AccessToken,
+            ExpiresAt = result.ExpiresAt
+        };
     }
 }

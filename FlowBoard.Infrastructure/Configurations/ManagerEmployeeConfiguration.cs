@@ -25,6 +25,7 @@ public class ManagerEmployeeConfiguration : IEntityTypeConfiguration<ManagerEmpl
             .HasForeignKey(x => x.EmployeeId)
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(x => x.EmployeeId);
+        builder.HasIndex(x => x.EmployeeId)
+            .IsUnique();
     }
 }

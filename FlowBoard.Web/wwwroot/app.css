@@ -1,14 +1,14 @@
 :root {
-  --flowboard-ink: #1d2b29;
-  --flowboard-muted: #687875;
+  --flowboard-ink: #20243a;
+  --flowboard-muted: #68708a;
   --flowboard-surface: #ffffff;
-  --flowboard-page: #f5f8f7;
-  --flowboard-line: #e4ebe8;
-  --flowboard-primary: #286b61;
-  --flowboard-primary-hover: #20574f;
-  --flowboard-primary-soft: #e8f3f0;
-  --flowboard-sidebar: #192b28;
-  --flowboard-sidebar-muted: #a4b7b2;
+  --flowboard-page: #f6f7fb;
+  --flowboard-line: #e6e8f0;
+  --flowboard-primary: #4f46e5;
+  --flowboard-primary-hover: #4338ca;
+  --flowboard-primary-soft: #eeedff;
+  --flowboard-sidebar: #18213a;
+  --flowboard-sidebar-muted: #aab3ca;
 }
 
 html,
@@ -79,11 +79,11 @@ a:hover {
 }
 
 .btn-outline-secondary {
-  --bs-btn-color: #53635f;
-  --bs-btn-border-color: #d7e0dd;
+  --bs-btn-color: #536079;
+  --bs-btn-border-color: #d9ddea;
   --bs-btn-hover-color: var(--flowboard-ink);
-  --bs-btn-hover-bg: #f1f5f3;
-  --bs-btn-hover-border-color: #c9d5d1;
+  --bs-btn-hover-bg: #f2f3fa;
+  --bs-btn-hover-border-color: #cbd0e3;
 }
 
 .btn:focus-visible,
@@ -91,8 +91,8 @@ a:hover {
 .form-select:focus,
 .form-check-input:focus,
 .btn-link.nav-link:focus {
-  box-shadow: 0 0 0 0.2rem rgba(40, 107, 97, 0.18);
-  border-color: #78a99e;
+  box-shadow: 0 0 0 0.2rem rgba(79, 70, 229, 0.18);
+  border-color: #9691f2;
 }
 
 .content {
@@ -112,7 +112,7 @@ a:hover {
   border: 1px solid var(--flowboard-line);
   border-radius: 1rem;
   background: #fff;
-  box-shadow: 0 16px 48px rgba(27, 49, 44, 0.08);
+  box-shadow: 0 16px 48px rgba(32, 36, 58, 0.08);
 }
 
 .auth-brand-mark {
@@ -169,7 +169,7 @@ a:hover {
   border: 1px solid rgba(218, 231, 225, 0.9);
   border-radius: 1rem;
   background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 24px 60px rgba(27, 62, 53, 0.14);
+  box-shadow: 0 24px 60px rgba(32, 36, 58, 0.14);
   transform: rotate(-4deg);
 }
 
@@ -228,7 +228,7 @@ a:hover {
   border: 1px solid #e8eeeb;
   border-radius: 0.45rem;
   background: white;
-  box-shadow: 0 2px 4px rgba(27, 49, 44, 0.035);
+  box-shadow: 0 2px 4px rgba(32, 36, 58, 0.035);
 }
 
 .hero-column:nth-child(2) i:first-of-type {
@@ -240,7 +240,7 @@ a:hover {
   position: absolute;
   width: 12rem;
   height: 12rem;
-  border: 1px solid rgba(40, 107, 97, 0.12);
+  border: 1px solid rgba(79, 70, 229, 0.12);
   border-radius: 50%;
 }
 
@@ -289,6 +289,13 @@ a:hover {
   margin-bottom: 1.75rem;
 }
 
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .page-title {
   margin: 0;
   font-size: clamp(1.65rem, 3vw, 2rem);
@@ -335,7 +342,7 @@ a:hover {
   --bs-card-border-radius: 0.85rem;
   --bs-card-cap-bg: transparent;
   background-color: var(--flowboard-surface);
-  box-shadow: 0 1px 2px rgba(27, 49, 44, 0.035);
+  box-shadow: 0 1px 2px rgba(32, 36, 58, 0.035);
 }
 
 .entity-grid {
@@ -354,7 +361,7 @@ a:hover {
 
 .entity-card:hover {
   border-color: #c5d8d2;
-  box-shadow: 0 8px 24px rgba(27, 49, 44, 0.07);
+  box-shadow: 0 8px 24px rgba(32, 36, 58, 0.07);
   transform: translateY(-1px);
 }
 
@@ -363,7 +370,7 @@ a:hover {
 }
 
 .entity-card-interactive:focus-visible {
-  outline: 3px solid rgba(40, 107, 97, 0.3);
+  outline: 3px solid rgba(79, 70, 229, 0.3);
   outline-offset: 3px;
 }
 
@@ -426,7 +433,7 @@ a:hover {
   border: 1px solid var(--flowboard-line);
   border-radius: 0.65rem;
   background: #fff;
-  box-shadow: 0 10px 28px rgba(27, 49, 44, 0.14);
+  box-shadow: 0 10px 28px rgba(32, 36, 58, 0.14);
 }
 
 .entity-action-menu .dropdown-item,
@@ -475,13 +482,13 @@ a:hover {
 .input-group-text {
   color: var(--flowboard-muted);
   background: #fff;
-  border-color: #dce5e1;
+  border-color: #dce0ec;
 }
 
 .form-control,
 .form-select {
   min-height: 2.75rem;
-  border-color: #dce5e1;
+  border-color: #dce0ec;
   border-radius: 0.55rem;
 }
 
@@ -506,7 +513,7 @@ a:hover {
   border: 1px solid var(--flowboard-line);
   border-radius: 0.9rem;
   background: #fff;
-  box-shadow: 0 5px 22px rgba(27, 49, 44, 0.045);
+  box-shadow: 0 5px 22px rgba(32, 36, 58, 0.045);
 }
 
 .detail-panel {
@@ -536,41 +543,6 @@ a:hover {
 .badge.bg-secondary {
   color: #455550 !important;
   background: #edf2f0 !important;
-}
-
-.comment-thread {
-  max-width: 860px;
-}
-
-.comment-item {
-  padding-block: 1rem;
-  border-bottom: 1px solid var(--flowboard-line);
-}
-
-.comment-avatar {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: 0 0 2.25rem;
-  place-items: center;
-  border-radius: 50%;
-  color: var(--flowboard-primary);
-  background: var(--flowboard-primary-soft);
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
-.comment-content {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.6;
-}
-
-.comment-composer {
-  padding: 1rem;
-  border: 1px solid var(--flowboard-line);
-  border-radius: 0.8rem;
-  background: #fbfcfc;
 }
 
 .column-card-actions {
@@ -627,6 +599,78 @@ h1:focus {
   margin-top: 0.35rem;
   color: #b42318;
   font-size: 0.825rem;
+}
+
+.admin-dashboard .page-header,
+.admin-users-page .page-header,
+.admin-teams-page .page-header,
+.admin-assignments-page .page-header,
+.admin-workspaces-page .page-header,
+.admin-projects-page .page-header,
+.admin-boards-page .page-header {
+  margin-bottom: 1.4rem;
+}
+
+.admin-dashboard .page-title,
+.admin-users-page .page-title,
+.admin-teams-page .page-title,
+.admin-assignments-page .page-title,
+.admin-workspaces-page .page-title,
+.admin-projects-page .page-title,
+.admin-boards-page .page-title {
+  color: var(--flowboard-ink);
+  font-size: clamp(1.55rem, 2.6vw, 1.9rem);
+  font-weight: 730;
+  letter-spacing: -0.04em;
+  line-height: 1.2;
+}
+
+.admin-dashboard .page-subtitle,
+.admin-users-page .page-subtitle,
+.admin-teams-page .page-subtitle,
+.admin-assignments-page .page-subtitle,
+.admin-workspaces-page .page-subtitle,
+.admin-projects-page .page-subtitle,
+.admin-boards-page .page-subtitle {
+  max-width: 720px;
+  color: var(--flowboard-muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.admin-dashboard .page-header-actions .btn,
+.admin-users-page .page-header-actions .btn,
+.admin-teams-page .page-header-actions .btn,
+.admin-assignments-page .page-header-actions .btn,
+.admin-workspaces-page .page-header-actions .btn,
+.admin-projects-page .page-header-actions .btn,
+.admin-boards-page .page-header-actions .btn {
+  min-height: 2.55rem;
+  padding-inline: 0.9rem;
+  font-size: 0.78rem;
+}
+
+.admin-dashboard :is(.form-control, .form-select),
+.admin-users-page :is(.form-control, .form-select),
+.admin-teams-page :is(.form-control, .form-select),
+.admin-assignments-page :is(.form-control, .form-select),
+.admin-workspaces-page :is(.form-control, .form-select),
+.admin-projects-page :is(.form-control, .form-select),
+.admin-boards-page :is(.form-control, .form-select) {
+  min-width: 0;
+  border-color: #dfe2eb;
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+}
+
+.admin-dashboard :is(.empty-state, .dashboard-unavailable-note),
+.admin-users-page :is(.empty-state, .users-api-note),
+.admin-teams-page :is(.empty-state, .teams-api-note),
+.admin-assignments-page :is(.empty-state, .assignment-api-notice),
+.admin-workspaces-page :is(.empty-state, .workspace-api-note),
+.admin-projects-page :is(.empty-state, .project-api-note),
+.admin-boards-page :is(.empty-state, .board-filter-note) {
+  line-height: 1.5;
 }
 
 @media (max-width: 767.98px) {

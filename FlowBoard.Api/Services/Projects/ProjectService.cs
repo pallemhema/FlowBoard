@@ -230,6 +230,51 @@ public class ProjectService : IProjectService
         var project = await GetProjectAsync(projectId, cancellationToken);
         await EnsureProjectManagementAccessAsync(project, cancellationToken);
 
+        if (request.ManagerId.HasValue &&
+            request.ManagerId.Value != project.ManagerId)
+        {
+            if (!IsCurrentUserAdmin())
+            {
+                throw new ForbiddenException(
+                    "Only an administrator can reassign a project's Manager.");
+            }
+
+            var manager = await _dbContext.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    user => user.Id == request.ManagerId.Value,
+                    cancellationToken);
+
+            if (manager is null)
+            {
+                throw new NotFoundException("Project Manager was not found.");
+            }
+
+            if (manager.Role != UserRole.Manager)
+            {
+                throw new ValidationException(
+                    "The selected Project Manager must have the Manager role.");
+            }
+
+            var managerHasWorkspaceAccess =
+                await _dbContext.Workspaces.AnyAsync(
+                    workspace => workspace.Id == project.WorkspaceId &&
+                                 workspace.OwnerId == manager.Id,
+                    cancellationToken) ||
+                await _dbContext.WorkspaceMembers.AnyAsync(
+                    member => member.WorkspaceId == project.WorkspaceId &&
+                              member.UserId == manager.Id,
+                    cancellationToken);
+
+            if (!managerHasWorkspaceAccess)
+            {
+                throw new ForbiddenException(
+                    "The selected Project Manager must have access to the project workspace.");
+            }
+
+            project.ManagerId = manager.Id;
+        }
+
         if (!Enum.IsDefined(request.Status))
         {
             throw new ValidationException("The selected project status is invalid.");

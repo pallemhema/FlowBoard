@@ -1,0 +1,755 @@
+@page "/admin/manager-assignments"
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+@implements IDisposable
+
+@using System.Text.Json
+@using FlowBoard.Shared.DTOs.ManagerEmployees
+
+@inject IManagerEmployeeApiService ManagerEmployeeApiService
+@inject IUserDirectoryApiService UserDirectoryApiService
+@inject ToastService ToastService
+
+<PageTitle>Manager-Employee Assignments | FlowBoard</PageTitle>
+
+<div class="page-shell admin-assignments-page">
+    <PageHeader Title="Manager-Employee Assignments"
+                Eyebrow="Administration"
+                Description="Manage reporting relationships between managers and employees." />
+
+    <div class="assignment-api-notice" role="note">
+        <i class="bi bi-info-circle" aria-hidden="true"></i>
+        <p>
+            The user directory does not include account roles, and the assignment API does not provide a manager directory. Manager and employee account selections are validated by the backend. These relationships do not grant workspace, project, board, or team access.
+        </p>
+    </div>
+
+    @if (isLoadingAssignments)
+    {
+        <div class="assignment-loading" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <span>Loading manager assignments...</span>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(assignmentsError))
+    {
+        <div class="assignment-error" role="alert">
+            <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+            <span>@assignmentsError</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadAllAssignmentsAsync">Retry</button>
+        </div>
+    }
+    else
+    {
+        <div class="assignment-layout">
+            <section class="manager-panel" aria-labelledby="manager-list-title">
+                <div class="assignment-panel-heading">
+                    <div>
+                        <h2 id="manager-list-title">Managers</h2>
+                        <p>@(managerGroups.Count == 1 ? "1 manager with assignments" : $"{managerGroups.Count:N0} managers with assignments")</p>
+                    </div>
+                    <span class="assignment-count-icon"><i class="bi bi-person-badge" aria-hidden="true"></i></span>
+                </div>
+
+                <div class="manager-search">
+                    <SearchBox Value="@managerSearch"
+                               ValueChanged="HandleManagerSearchChanged"
+                               Placeholder="Search assigned managers" />
+                </div>
+
+                @if (filteredManagers.Count == 0)
+                {
+                    <EmptyState Title="@(string.IsNullOrWhiteSpace(managerSearch) ? "No assignments yet" : "No matching managers")"
+                                Message="@(string.IsNullOrWhiteSpace(managerSearch) ? "Select a manager account in the assignment form to add the first relationship." : "Try another name or email address.")" />
+                }
+                else
+                {
+                    <div class="manager-list">
+                        @foreach (var manager in filteredManagers)
+                        {
+                            <button type="button"
+                                    class="manager-list-item @(selectedManager?.UserId == manager.UserId ? "manager-list-item-selected" : null)"
+                                    aria-current="@(selectedManager?.UserId == manager.UserId ? "true" : null)"
+                                    @onclick="() => SelectManager(manager)">
+                                <UserAvatar FirstName="@manager.FirstName" LastName="@manager.LastName" SizeRem="2.35" />
+                                <span class="manager-list-copy">
+                                    <strong>@GetFullName(manager.FirstName, manager.LastName)</strong>
+                                    <small>@manager.Email</small>
+                                </span>
+                                <span class="manager-employee-count">@GetEmployeesForManager(manager.UserId).Count</span>
+                                <i class="bi bi-chevron-right manager-chevron" aria-hidden="true"></i>
+                            </button>
+                        }
+                    </div>
+                }
+                <p class="manager-list-footnote">Only managers with an existing assignment are listed here. Search the directory in the form to select a manager with no current assignments.</p>
+
+                <div class="manager-account-search">
+                    <p class="form-label">Find a manager account</p>
+                    <SearchBox Value="@managerAccountSearch"
+                               ValueChanged="HandleManagerAccountSearchChanged"
+                               Placeholder="Search by name or email" />
+                    <p class="manager-list-footnote">Directory results do not include roles. Selecting an account does not assign it; the API verifies the Manager role when you assign an employee.</p>
+
+                    @if (isLoadingManagerCandidates)
+                    {
+                        <div class="assignment-inline-loading" role="status">
+                            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching accounts...
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(managerCandidateError))
+                    {
+                        <div class="assignment-error compact" role="alert">@managerCandidateError</div>
+                    }
+                    else if (managerCandidates is not null && managerCandidates.Items.Count == 0)
+                    {
+                        <p class="assignment-empty-hint">No accounts match this search.</p>
+                    }
+                    else if (managerCandidates is not null)
+                    {
+                        <div class="manager-candidate-list">
+                            @foreach (var account in managerCandidates.Items)
+                            {
+                                <button type="button"
+                                        class="manager-candidate-button @(selectedManager?.UserId == account.UserId ? "manager-candidate-selected" : null)"
+                                        @onclick="() => SelectManager(account)">
+                                    <UserAvatar FirstName="@account.FirstName" LastName="@account.LastName" />
+                                    <span class="manager-list-copy">
+                                        <strong>@GetFullName(account.FirstName, account.LastName)</strong>
+                                        <small>@account.Email</small>
+                                    </span>
+                                    @if (selectedManager?.UserId == account.UserId)
+                                    {
+                                        <i class="bi bi-check2" aria-label="Selected"></i>
+                                    }
+                                </button>
+                            }
+                        </div>
+                        <Pagination CurrentPage="@managerCandidates.Page"
+                                    TotalPages="@managerCandidates.TotalPages"
+                                    TotalCount="@managerCandidates.TotalCount"
+                                    PageChanged="LoadManagerCandidatesAsync" />
+                    }
+                </div>
+            </section>
+
+            <section class="assignment-detail-panel" aria-labelledby="assignment-detail-title">
+                @if (selectedManager is null)
+                {
+                    <div class="assignment-detail-empty">
+                        <span class="assignment-empty-icon"><i class="bi bi-diagram-2" aria-hidden="true"></i></span>
+                        <h2 id="assignment-detail-title">Select a manager</h2>
+                        <p>Choose a manager to view assigned employees, or search for a manager account below to start a new relationship.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="assignment-detail-header">
+                        <div class="manager-detail-identity">
+                            <UserAvatar FirstName="@selectedManager.FirstName" LastName="@selectedManager.LastName" SizeRem="3" Square="true" />
+                            <div>
+                                <p class="section-label mb-1">Manager</p>
+                                <h2 id="assignment-detail-title">@GetFullName(selectedManager.FirstName, selectedManager.LastName)</h2>
+                                <a href="mailto:@selectedManager.Email">@selectedManager.Email</a>
+                            </div>
+                        </div>
+                        <span class="assignment-total-badge">
+                            @selectedManagerEmployees.Count employee@(selectedManagerEmployees.Count == 1 ? "" : "s")
+                        </span>
+                    </div>
+
+                    <section class="assign-employee-section" aria-labelledby="assign-employee-title">
+                        <div class="assign-section-heading">
+                            <div>
+                                <h3 id="assign-employee-title">Assign employees</h3>
+                                <p>Select an account and add it to this manager.</p>
+                            </div>
+                        </div>
+
+                        <p class="form-label">Search account directory</p>
+                        <div class="assignment-search">
+                            <SearchBox Value="@employeeSearch"
+                                       ValueChanged="HandleEmployeeSearchChanged"
+                                       Placeholder="Search employee by name or email" />
+                        </div>
+                        <p class="assignment-role-note">Roles are not returned by the directory. The API accepts only Employee accounts and rejects duplicate assignments.</p>
+
+                        @if (isLoadingEmployees)
+                        {
+                            <div class="assignment-inline-loading" role="status">
+                                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching accounts...
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(employeeSearchError))
+                        {
+                            <div class="assignment-error compact" role="alert">
+                                <span>@employeeSearchError</span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadEmployeeCandidatesAsync(employeeCandidatePage)">Retry</button>
+                            </div>
+                        }
+                        else if (employeeCandidates is not null && employeeCandidates.Items.Count == 0)
+                        {
+                            <p class="assignment-empty-hint">No accounts match this search.</p>
+                        }
+                        else if (employeeCandidates is not null)
+                        {
+                            <div class="assignment-candidate-list">
+                                @foreach (var account in employeeCandidates.Items)
+                                {
+                                    var isAlreadyAssigned = selectedManagerEmployees.Any(
+                                        assignment => assignment.EmployeeId == account.UserId);
+                                    <div class="assignment-candidate" @key="account.UserId">
+                                        <UserAvatar FirstName="@account.FirstName" LastName="@account.LastName" SizeRem="2.35" />
+                                        <span class="employee-candidate-copy">
+                                            <strong>@GetFullName(account.FirstName, account.LastName)</strong>
+                                            <small>@account.Email</small>
+                                        </span>
+                                        @if (isAlreadyAssigned)
+                                        {
+                                            <span class="assignment-already-added"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Assigned</span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    disabled="@isSubmitting"
+                                                    @onclick="() => AssignEmployeeAsync(account)">
+                                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Assign
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            <Pagination CurrentPage="@employeeCandidates.Page"
+                                        TotalPages="@employeeCandidates.TotalPages"
+                                        TotalCount="@employeeCandidates.TotalCount"
+                                        PageChanged="LoadEmployeeCandidatesAsync" />
+                        }
+                    </section>
+
+                    <section class="assigned-employees-section" aria-labelledby="assigned-employees-title">
+                        <div class="assign-section-heading">
+                            <div>
+                                <h3 id="assigned-employees-title">Assigned employees</h3>
+                                <p>Removing an assignment does not change other memberships or task assignments.</p>
+                            </div>
+                            @if (selectedManagerEmployees.Count > 0)
+                            {
+                                <span class="assigned-list-count">@selectedManagerEmployees.Count</span>
+                            }
+                        </div>
+
+                        <div class="assigned-search">
+                            <SearchBox Value="@assignedEmployeeSearch"
+                                       ValueChanged="HandleAssignedEmployeeSearchChanged"
+                                       Placeholder="Filter assigned employees" />
+                        </div>
+
+                        @if (filteredAssignments.Count == 0)
+                        {
+                            <EmptyState Title="@(selectedManagerEmployees.Count == 0 ? "No employees assigned" : "No matching employees")"
+                                        Message="@(selectedManagerEmployees.Count == 0 ? "Use the account search above to add Employee accounts." : "Try another name or email address.")" />
+                        }
+                        else
+                        {
+                            <div class="assigned-employee-list">
+                                @foreach (var assignment in pagedAssignments)
+                                {
+                                    <div class="assigned-employee-row" @key="assignment.EmployeeId">
+                                        <UserAvatar FirstName="@assignment.Employee.FirstName" LastName="@assignment.Employee.LastName" SizeRem="2.35" />
+                                        <span class="assigned-employee-copy">
+                                            <strong>@GetFullName(assignment.Employee.FirstName, assignment.Employee.LastName)</strong>
+                                            <small>@assignment.Employee.Email</small>
+                                        </span>
+                                        <span class="assignment-date">@assignment.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                        @if (pendingRemovalEmployeeId == assignment.EmployeeId)
+                                        {
+                                            <span class="assignment-remove-confirm">
+                                                <span>Remove?</span>
+                                                <button type="button" class="btn btn-sm btn-danger" disabled="@isSubmitting" @onclick="() => RemoveAssignmentAsync(assignment)">Confirm</button>
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="CancelRemoval">Cancel</button>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-danger"
+                                                    aria-label="@($"Remove assignment for {assignment.Employee.FirstName} {assignment.Employee.LastName}")"
+                                                    @onclick="() => RequestRemoval(assignment.EmployeeId)">
+                                                Remove
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (filteredAssignments.Count > AssignmentPageSize)
+                            {
+                                <div class="assignment-local-pagination">
+                                    <span>Showing @assignmentRangeStart-@assignmentRangeEnd of @filteredAssignments.Count</span>
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Assigned employee pages">
+                                        <button type="button" class="btn btn-outline-secondary" disabled="@(assignedEmployeePage <= 1)" aria-label="Previous employee page" @onclick="PreviousAssignmentPage">Previous</button>
+                                        <button type="button" class="btn btn-outline-secondary" disabled="@(assignedEmployeePage >= assignmentPageCount)" aria-label="Next employee page" @onclick="NextAssignmentPage">Next</button>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </section>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private const int RelationshipPageSize = 100;
+    private const int DirectoryPageSize = 10;
+    private const int AssignmentPageSize = 10;
+
+    private readonly List<ManagerEmployeeResponse> allAssignments = [];
+    private PagedResponse<UserDirectoryResponse>? employeeCandidates;
+    private PagedResponse<UserDirectoryResponse>? managerCandidates;
+    private UserDirectoryResponse? selectedManager;
+    private string? managerSearch;
+    private string? managerAccountSearch;
+    private string? employeeSearch;
+    private string? assignedEmployeeSearch;
+    private string? assignmentsError;
+    private string? employeeSearchError;
+    private bool isLoadingAssignments = true;
+    private bool isLoadingEmployees;
+    private bool isLoadingManagerCandidates;
+    private bool isSubmitting;
+    private string? managerCandidateError;
+    private int managerCandidatePage = 1;
+    private int employeeCandidatePage = 1;
+    private int assignedEmployeePage = 1;
+    private Guid? pendingRemovalEmployeeId;
+    private CancellationTokenSource? managerAccountSearchDebounce;
+    private CancellationTokenSource? employeeSearchDebounce;
+    private long managerAccountSearchVersion;
+    private long employeeSearchVersion;
+
+    private List<UserDirectoryResponse> managerGroups => allAssignments
+        .GroupBy(assignment => assignment.ManagerId)
+        .Select(group => group.First().Manager)
+        .OrderBy(manager => manager.FirstName)
+        .ThenBy(manager => manager.LastName)
+        .ThenBy(manager => manager.Email)
+        .ToList();
+
+    private List<UserDirectoryResponse> filteredManagers => managerGroups
+        .Where(manager => Matches(
+            $"{manager.FirstName} {manager.LastName} {manager.Email}",
+            managerSearch))
+        .ToList();
+
+    private List<ManagerEmployeeResponse> selectedManagerEmployees => selectedManager is null
+        ? []
+        : allAssignments
+            .Where(assignment => assignment.ManagerId == selectedManager.UserId)
+            .OrderBy(assignment => assignment.Employee.FirstName)
+            .ThenBy(assignment => assignment.Employee.LastName)
+            .ThenBy(assignment => assignment.Employee.Email)
+            .ToList();
+
+    private List<ManagerEmployeeResponse> filteredAssignments => selectedManagerEmployees
+        .Where(assignment => Matches(
+            $"{assignment.Employee.FirstName} {assignment.Employee.LastName} {assignment.Employee.Email}",
+            assignedEmployeeSearch))
+        .ToList();
+
+    private List<ManagerEmployeeResponse> pagedAssignments => filteredAssignments
+        .Skip((assignedEmployeePage - 1) * AssignmentPageSize)
+        .Take(AssignmentPageSize)
+        .ToList();
+
+    private int assignmentPageCount => Math.Max(
+        1,
+        (int)Math.Ceiling(filteredAssignments.Count / (double)AssignmentPageSize));
+    private int assignmentRangeStart => filteredAssignments.Count == 0
+        ? 0
+        : (assignedEmployeePage - 1) * AssignmentPageSize + 1;
+    private int assignmentRangeEnd => Math.Min(
+        assignedEmployeePage * AssignmentPageSize,
+        filteredAssignments.Count);
+
+    protected override Task OnInitializedAsync() => LoadAllAssignmentsAsync();
+
+    private async Task LoadAllAssignmentsAsync()
+    {
+        isLoadingAssignments = true;
+        assignmentsError = null;
+        allAssignments.Clear();
+
+        try
+        {
+            var firstPage = await ManagerEmployeeApiService.GetAllAsync(
+                new PagedRequest { Page = 1, PageSize = RelationshipPageSize });
+
+            if (firstPage is null)
+            {
+                assignmentsError = "Assignments could not be loaded. Confirm your Admin access and retry.";
+                return;
+            }
+
+            allAssignments.AddRange(firstPage.Items);
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await ManagerEmployeeApiService.GetAllAsync(
+                    new PagedRequest { Page = page, PageSize = RelationshipPageSize });
+
+                if (response is null)
+                {
+                    allAssignments.Clear();
+                    assignmentsError = "The assignment list could not be fully loaded. Results are withheld to avoid partial manager counts.";
+                    return;
+                }
+
+                allAssignments.AddRange(response.Items);
+            }
+
+            if (selectedManager is not null)
+            {
+                var refreshed = allAssignments
+                    .FirstOrDefault(assignment => assignment.ManagerId == selectedManager.UserId)
+                    ?.Manager;
+                if (refreshed is not null)
+                {
+                    selectedManager = refreshed;
+                }
+            }
+        }
+        catch (HttpRequestException)
+        {
+            allAssignments.Clear();
+            assignmentsError = "The assignment service could not be reached. Check your connection and retry.";
+        }
+        catch (JsonException)
+        {
+            allAssignments.Clear();
+            assignmentsError = "The assignment service returned an invalid response.";
+        }
+        finally
+        {
+            isLoadingAssignments = false;
+        }
+    }
+
+    private void SelectManager(UserDirectoryResponse manager)
+    {
+        selectedManager = manager;
+        employeeSearchVersion++;
+        employeeSearchDebounce?.Cancel();
+        employeeSearchDebounce?.Dispose();
+        employeeSearchDebounce = null;
+        isLoadingEmployees = false;
+        employeeSearch = null;
+        employeeCandidates = null;
+        employeeCandidatePage = 1;
+        employeeSearchError = null;
+        assignedEmployeeSearch = null;
+        assignedEmployeePage = 1;
+        pendingRemovalEmployeeId = null;
+    }
+
+    private Task HandleManagerSearchChanged(string? value)
+    {
+        managerSearch = value?.Trim();
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleManagerAccountSearchChanged(string? value)
+    {
+        managerAccountSearch = value?.Trim();
+        managerAccountSearchDebounce?.Cancel();
+        managerAccountSearchDebounce?.Dispose();
+        managerAccountSearchDebounce = new CancellationTokenSource();
+        var token = managerAccountSearchDebounce.Token;
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadManagerCandidatesAsync(1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadManagerCandidatesAsync(int page)
+    {
+        var version = ++managerAccountSearchVersion;
+        managerCandidatePage = page;
+        isLoadingManagerCandidates = true;
+        managerCandidateError = null;
+
+        try
+        {
+            var response = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = DirectoryPageSize,
+                    Search = string.IsNullOrWhiteSpace(managerAccountSearch)
+                        ? null
+                        : managerAccountSearch
+                });
+
+            if (version != managerAccountSearchVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                managerCandidates = null;
+                managerCandidateError = "The account directory could not be loaded. Confirm your Admin access and retry.";
+                return;
+            }
+
+            managerCandidates = response;
+        }
+        catch (HttpRequestException)
+        {
+            if (version == managerAccountSearchVersion)
+            {
+                managerCandidates = null;
+                managerCandidateError = "The account directory could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == managerAccountSearchVersion)
+            {
+                managerCandidates = null;
+                managerCandidateError = "The account directory returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == managerAccountSearchVersion)
+            {
+                isLoadingManagerCandidates = false;
+            }
+        }
+    }
+
+    private async Task HandleEmployeeSearchChanged(string? value)
+    {
+        employeeSearch = value?.Trim();
+        employeeSearchDebounce?.Cancel();
+        employeeSearchDebounce?.Dispose();
+        employeeSearchDebounce = new CancellationTokenSource();
+        var token = employeeSearchDebounce.Token;
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+            if (!token.IsCancellationRequested)
+            {
+                await LoadEmployeeCandidatesAsync(1);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task LoadEmployeeCandidatesAsync(int page)
+    {
+        var version = ++employeeSearchVersion;
+        employeeCandidatePage = page;
+        isLoadingEmployees = true;
+        employeeSearchError = null;
+
+        try
+        {
+            var response = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = DirectoryPageSize,
+                    Search = string.IsNullOrWhiteSpace(employeeSearch) ? null : employeeSearch
+                });
+
+            if (version != employeeSearchVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                employeeCandidates = null;
+                employeeSearchError = "The account directory could not be loaded. Confirm your Admin access and retry.";
+                return;
+            }
+
+            employeeCandidates = response;
+        }
+        catch (HttpRequestException)
+        {
+            if (version == employeeSearchVersion)
+            {
+                employeeCandidates = null;
+                employeeSearchError = "The account directory could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (version == employeeSearchVersion)
+            {
+                employeeCandidates = null;
+                employeeSearchError = "The account directory returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == employeeSearchVersion)
+            {
+                isLoadingEmployees = false;
+            }
+        }
+    }
+
+    private async Task AssignEmployeeAsync(UserDirectoryResponse employee)
+    {
+        if (selectedManager is null || isSubmitting)
+        {
+            return;
+        }
+
+        if (selectedManagerEmployees.Any(
+                assignment => assignment.EmployeeId == employee.UserId))
+        {
+            ToastService.Warning("This employee is already assigned to this manager.");
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var result = await ManagerEmployeeApiService.AssignAsync(
+                selectedManager.UserId,
+                new AssignEmployeeToManagerRequest
+                {
+                    EmployeeId = employee.UserId
+                });
+
+            if (result is null)
+            {
+                return;
+            }
+
+            ToastService.Success(
+                $"{GetFullName(employee.FirstName, employee.LastName)} assigned to {GetFullName(selectedManager.FirstName, selectedManager.LastName)}.");
+            await LoadAllAssignmentsAsync();
+            if (employeeCandidates is not null)
+            {
+                await LoadEmployeeCandidatesAsync(employeeCandidatePage);
+            }
+        }
+        catch (HttpRequestException)
+        {
+            ToastService.Error("The assignment service could not be reached. No assignment was confirmed.");
+        }
+        catch (JsonException)
+        {
+            ToastService.Error("The assignment service returned an invalid response. Refresh assignments to confirm the result.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void RequestRemoval(Guid employeeId)
+    {
+        pendingRemovalEmployeeId = employeeId;
+    }
+
+    private void CancelRemoval()
+    {
+        pendingRemovalEmployeeId = null;
+    }
+
+    private async Task RemoveAssignmentAsync(ManagerEmployeeResponse assignment)
+    {
+        if (selectedManager is null || isSubmitting)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        try
+        {
+            var removed = await ManagerEmployeeApiService.RemoveAsync(
+                assignment.ManagerId,
+                assignment.EmployeeId);
+            if (!removed)
+            {
+                return;
+            }
+
+            ToastService.Success(
+                $"The assignment for {GetFullName(assignment.Employee.FirstName, assignment.Employee.LastName)} was removed.");
+            pendingRemovalEmployeeId = null;
+            await LoadAllAssignmentsAsync();
+        }
+        catch (HttpRequestException)
+        {
+            ToastService.Error("The assignment service could not be reached. The relationship was not confirmed as removed.");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private Task HandleAssignedEmployeeSearchChanged(string? value)
+    {
+        assignedEmployeeSearch = value?.Trim();
+        assignedEmployeePage = 1;
+        return Task.CompletedTask;
+    }
+
+    private void PreviousAssignmentPage()
+    {
+        if (assignedEmployeePage > 1)
+        {
+            assignedEmployeePage--;
+        }
+    }
+
+    private void NextAssignmentPage()
+    {
+        if (assignedEmployeePage < assignmentPageCount)
+        {
+            assignedEmployeePage++;
+        }
+    }
+
+    private List<ManagerEmployeeResponse> GetEmployeesForManager(Guid managerId) =>
+        allAssignments
+            .Where(assignment => assignment.ManagerId == managerId)
+            .ToList();
+
+    private static bool Matches(string value, string? search) =>
+        string.IsNullOrWhiteSpace(search) ||
+        value.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+    private static string GetFullName(string firstName, string lastName)
+    {
+        var name = $"{firstName} {lastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? "Unnamed account" : name;
+    }
+
+    public void Dispose()
+    {
+        managerAccountSearchDebounce?.Cancel();
+        managerAccountSearchDebounce?.Dispose();
+        employeeSearchDebounce?.Cancel();
+        employeeSearchDebounce?.Dispose();
+    }
+}

@@ -1,0 +1,54 @@
+<article class="dashboard-stat-card">
+    <div class="dashboard-stat-top">
+        <span class="dashboard-stat-icon @IconTone">
+            <i class="bi @Icon" aria-hidden="true"></i>
+        </span>
+        @if (!string.IsNullOrWhiteSpace(SupportingText))
+        {
+            <span class="dashboard-stat-support">@SupportingText</span>
+        }
+    </div>
+    <p class="dashboard-stat-label">@Label</p>
+    @if (IsLoading)
+    {
+        <p class="dashboard-stat-value dashboard-stat-unavailable">Loading</p>
+    }
+    else if (IsUnavailable)
+    {
+        <p class="dashboard-stat-value dashboard-stat-unavailable">Unavailable</p>
+        @if (!string.IsNullOrWhiteSpace(UnavailableReason))
+        {
+            <p class="dashboard-stat-reason">@UnavailableReason</p>
+        }
+    }
+    else
+    {
+        <p class="dashboard-stat-value">@Value.ToString("N0")</p>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Icon { get; set; } = string.Empty;
+
+    [Parameter]
+    public string IconTone { get; set; } = "stat-tone-indigo";
+
+    [Parameter]
+    public int Value { get; set; }
+
+    [Parameter]
+    public string? SupportingText { get; set; }
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public bool IsUnavailable { get; set; }
+
+    [Parameter]
+    public string? UnavailableReason { get; set; }
+}

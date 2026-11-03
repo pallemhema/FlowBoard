@@ -1,9 +1,8 @@
 @page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/members/{UserId:guid}/edit"
-
-@using FlowBoard.Shared.DTOs.BoardMembers
-@using FlowBoard.Web.Models.BoardMembers
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 @inject IBoardMemberApiService BoardMemberApiService
+@inject IBoardApiService BoardApiService
 @inject NavigationManager Navigation
 
 <PageTitle>Edit Member Role</PageTitle>
@@ -44,6 +43,12 @@
             </p>
 
         </div>
+    }
+    else if (!canManageBoard)
+    {
+        <EmptyState
+            Title="Board management unavailable"
+            Message="Only authorized board managers can change member roles. Approval requests are not currently available." />
     }
     else if (model is null)
     {
@@ -162,6 +167,8 @@
 
     private bool isSubmitting;
 
+    private bool canManageBoard;
+
     private string? errorMessage;
 
     private string memberName = string.Empty;
@@ -177,6 +184,18 @@
     {
         try
         {
+            var board = await BoardApiService.GetByIdAsync(BoardId);
+            if (board is null || board.WorkspaceId != WorkspaceId)
+            {
+                return;
+            }
+
+            canManageBoard = board.CanManageBoard;
+            if (!canManageBoard)
+            {
+                return;
+            }
+
             var request = new PagedSearchRequest
             {
                 Page = 1,

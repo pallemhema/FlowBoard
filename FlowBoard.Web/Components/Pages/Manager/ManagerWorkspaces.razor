@@ -1,0 +1,1000 @@
+@page "/manager/workspaces"
+@page "/manager/workspaces/{Id:guid}"
+@attribute [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
+@implements IDisposable
+
+@using System.Text.Json
+@using System.Security.Claims
+@using FlowBoard.Shared.DTOs.Boards
+@using FlowBoard.Shared.DTOs.Projects
+@using FlowBoard.Shared.DTOs.Workspaces
+@using FlowBoard.Shared.Enums
+@using FlowBoard.Web.Components.Pages.Workspaces
+
+@inject IWorkspaceApiService WorkspaceApiService
+@inject IProjectApiService ProjectApiService
+@inject IBoardApiService BoardApiService
+@inject IUserDirectoryApiService UserDirectoryApiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+@if (Id is null)
+{
+    <PageTitle>My Workspaces | FlowBoard</PageTitle>
+    <Workspaces WorkspaceRoutePrefix="/manager/workspaces" />
+}
+else
+{
+    <PageTitle>@(workspace?.Name ?? "My workspace") | FlowBoard</PageTitle>
+
+    <div class="page-shell manager-workspace-page">
+        <a class="btn btn-link px-0 manager-workspace-back"
+           href="/manager/workspaces">
+            <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>
+            Back to my workspaces
+        </a>
+
+        @if (isLoadingWorkspace)
+        {
+            <div class="manager-workspace-loading" role="status" aria-live="polite">
+                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                <span>Loading workspace…</span>
+            </div>
+        }
+        else if (workspace is null)
+        {
+            <div class="manager-workspace-error" role="alert">
+                <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                <span>@workspaceError</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryLoadingAsync">
+                    Retry
+                </button>
+            </div>
+        }
+        else
+        {
+            <PageHeader Title="@workspace.Name"
+                        Eyebrow="My workspace"
+                        Description="Projects and boards you are authorized to access in this workspace." />
+
+            @if (canManageWorkspace)
+            {
+                <div class="manager-workspace-actions">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            @onclick="EditWorkspace">
+                        <i class="bi bi-pencil me-1" aria-hidden="true"></i>Edit workspace
+                    </button>
+                    <button type="button"
+                            class="btn btn-outline-danger"
+                            @onclick="() => isDeleteConfirmationOpen = true">
+                        <i class="bi bi-trash me-1" aria-hidden="true"></i>Delete workspace
+                    </button>
+                </div>
+            }
+            @if (!string.IsNullOrWhiteSpace(workspaceActionError))
+            {
+                <div class="manager-workspace-error" role="alert">@workspaceActionError</div>
+            }
+
+            <section class="manager-workspace-summary" aria-label="Workspace information">
+                <div>
+                    <span class="manager-workspace-label">Description</span>
+                    <p>@(string.IsNullOrWhiteSpace(workspace.Description) ? "No description provided." : workspace.Description)</p>
+                </div>
+                <div>
+                    <span class="manager-workspace-label">Workspace owner</span>
+                    <div class="mt-2">
+                        <WorkspaceOwner OwnerName="@workspace.OwnerName"
+                                        OwnerEmail="@workspace.OwnerEmail"
+                                        SizeRem="1.75" />
+                    </div>
+                </div>
+                <div class="manager-workspace-meta">
+                    <span>
+                        <i class="bi bi-calendar3" aria-hidden="true"></i>
+                        Created @workspace.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+                    </span>
+                    @if (workspace.ModifiedAt.HasValue)
+                    {
+                        <span>
+                            <i class="bi bi-pencil-square" aria-hidden="true"></i>
+                            Updated @workspace.ModifiedAt.Value.ToLocalTime().ToString("MMM d, yyyy")
+                        </span>
+                    }
+                </div>
+            </section>
+
+            <section class="manager-workspace-resource-panel" aria-labelledby="manager-workspace-members-title">
+                <div class="manager-workspace-section-heading">
+                    <div>
+                        <p class="section-label mb-1">Workspace access</p>
+                        <h2 id="manager-workspace-members-title">Members</h2>
+                    </div>
+                    @if (membersPage is not null)
+                    {
+                        <span class="manager-workspace-count">
+                            @membersPage.TotalCount @(membersPage.TotalCount == 1 ? "member" : "members")
+                        </span>
+                    }
+                </div>
+
+                @if (canManageWorkspace)
+                {
+                    <div class="manager-workspace-member-add">
+                        <label class="form-label">Add a direct report</label>
+                        <SearchBox Value="@candidateSearch"
+                                   ValueChanged="HandleCandidateSearchChanged"
+                                   Placeholder="Search direct reports" />
+                        <p class="manager-workspace-help">
+                            Managers can add only their direct reports. Workspace membership does not grant project or board access.
+                        </p>
+                        @if (!string.IsNullOrWhiteSpace(memberActionError))
+                        {
+                            <div class="manager-workspace-error" role="alert">@memberActionError</div>
+                        }
+                        @if (isLoadingCandidates)
+                        {
+                            <div class="manager-workspace-inline-state" role="status">
+                                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                                <span>Loading direct reports…</span>
+                            </div>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(candidateError))
+                        {
+                            <div class="manager-workspace-error" role="alert">
+                                <span>@candidateError</span>
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary ms-auto"
+                                        @onclick="() => LoadCandidatesAsync(candidatePage)">
+                                    Retry
+                                </button>
+                            </div>
+                        }
+                        else if (candidates is not null &&
+                                 !candidates.Items.Any(IsEligibleCandidate))
+                        {
+                            <p class="manager-workspace-help">No direct reports match this search.</p>
+                        }
+                        else if (candidates is not null)
+                        {
+                            <div class="manager-workspace-people-list">
+                                @foreach (var candidate in candidates.Items.Where(IsEligibleCandidate))
+                                {
+                                    var isAlreadyMember = workspaceMemberIds.Contains(candidate.UserId);
+                                    <div class="manager-workspace-person-row" @key="candidate.UserId">
+                                        <UserAvatar FirstName="@candidate.FirstName"
+                                                    LastName="@candidate.LastName"
+                                                    SizeRem="2.25" />
+                                        <span class="manager-workspace-person-copy">
+                                            <strong>@GetUserName(candidate)</strong>
+                                            <span>@candidate.Email</span>
+                                        </span>
+                                        @if (isAlreadyMember)
+                                        {
+                                            <span class="manager-workspace-member-badge">Member</span>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary"
+                                                    disabled="@isAddingMember"
+                                                    @onclick="() => AddMemberAsync(candidate)">
+                                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Add
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (candidates.Items.Any(IsEligibleCandidate) &&
+                                 candidates.TotalCount > candidates.PageSize)
+                            {
+                                <Pagination CurrentPage="@candidates.Page"
+                                            TotalPages="@candidates.TotalPages"
+                                            TotalCount="@candidates.TotalCount"
+                                            PageChanged="LoadCandidatesAsync" />
+                            }
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(membersError))
+                {
+                    <div class="manager-workspace-error" role="alert">
+                        <span>@membersError</span>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-secondary ms-auto"
+                                @onclick="() => LoadMembersAsync(currentMembersPage)">
+                            Retry
+                        </button>
+                    </div>
+                }
+                else if (isLoadingMembers)
+                {
+                    <div class="manager-workspace-inline-state" role="status" aria-live="polite">
+                        <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                        <span>Loading workspace members…</span>
+                    </div>
+                }
+                else if (membersPage is { Items.Count: 0 })
+                {
+                    <EmptyState Title="No workspace members"
+                                Message="People explicitly added to this workspace will appear here." />
+                }
+                else if (membersPage is not null)
+                {
+                    <div class="manager-workspace-people-list">
+                        @foreach (var member in membersPage.Items)
+                        {
+                            <div class="manager-workspace-person-row" @key="member.UserId">
+                                <UserAvatar FirstName="@member.User.FirstName"
+                                            LastName="@member.User.LastName"
+                                            SizeRem="2.25" />
+                                <span class="manager-workspace-person-copy">
+                                    <strong>@GetUserName(member.User)</strong>
+                                    <span>@member.User.Email</span>
+                                </span>
+                                <time datetime="@member.JoinedAt.ToString("O")">
+                                    Joined @member.JoinedAt.ToLocalTime().ToString("MMM d, yyyy")
+                                </time>
+                            </div>
+                        }
+                    </div>
+                    @if (membersPage.TotalCount > membersPage.PageSize)
+                    {
+                        <Pagination CurrentPage="@membersPage.Page"
+                                    TotalPages="@membersPage.TotalPages"
+                                    TotalCount="@membersPage.TotalCount"
+                                    PageChanged="LoadMembersAsync" />
+                    }
+                }
+            </section>
+
+            <section class="manager-workspace-resource-panel" aria-labelledby="manager-workspace-projects-title">
+                <div class="manager-workspace-section-heading">
+                    <div>
+                        <p class="section-label mb-1">Authorized resources</p>
+                        <h2 id="manager-workspace-projects-title">Projects</h2>
+                    </div>
+                    @if (!isLoadingProjects && projectsError is null)
+                    {
+                        <span class="manager-workspace-count">
+                            @accessibleProjects.Count @(accessibleProjects.Count == 1 ? "project" : "projects")
+                        </span>
+                    }
+                </div>
+
+                @if (isLoadingProjects)
+                {
+                    <div class="manager-workspace-resource-state" role="status" aria-live="polite">
+                        <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                        <span>Loading accessible projects…</span>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(projectsError))
+                {
+                    <div class="manager-workspace-error" role="alert">
+                        <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                        <span>@projectsError</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryLoadingAsync">
+                            Retry
+                        </button>
+                    </div>
+                }
+                else if (accessibleProjects.Count == 0)
+                {
+                    <EmptyState Title="No accessible projects"
+                                Message="Projects you are authorized to access in this workspace will appear here." />
+                }
+                else
+                {
+                    <div class="manager-workspace-project-grid">
+                        @foreach (var project in accessibleProjects)
+                        {
+                            <article class="manager-workspace-project-card" @key="project.ProjectId">
+                                <div class="manager-workspace-resource-icon" aria-hidden="true">
+                                    <i class="bi bi-kanban"></i>
+                                </div>
+                                <div class="manager-workspace-resource-copy">
+                                    <div class="manager-workspace-resource-title">
+                                        <h3>@project.Name</h3>
+                                        <span class="manager-workspace-status">@project.Status</span>
+                                    </div>
+                                    <p>@(string.IsNullOrWhiteSpace(project.Description) ? "No description provided." : project.Description)</p>
+                                    <span class="manager-workspace-project-dates">
+                                        @project.StartDate.ToLocalTime().ToString("MMM d, yyyy")
+                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                        @project.EndDate.ToLocalTime().ToString("MMM d, yyyy")
+                                    </span>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="manager-workspace-resource-panel" aria-labelledby="manager-workspace-boards-title">
+                <div class="manager-workspace-section-heading">
+                    <div>
+                        <p class="section-label mb-1">Authorized resources</p>
+                        <h2 id="manager-workspace-boards-title">Boards</h2>
+                    </div>
+                    @if (!isLoadingBoards && boardsError is null)
+                    {
+                        <span class="manager-workspace-count">
+                            @accessibleBoards.Count @(accessibleBoards.Count == 1 ? "board" : "boards")
+                        </span>
+                    }
+                </div>
+
+                @if (isLoadingBoards)
+                {
+                    <div class="manager-workspace-resource-state" role="status" aria-live="polite">
+                        <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                        <span>Loading accessible boards…</span>
+                    </div>
+                }
+                else if (!string.IsNullOrWhiteSpace(boardsError))
+                {
+                    <div class="manager-workspace-error" role="alert">
+                        <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                        <span>@boardsError</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryLoadingAsync">
+                            Retry
+                        </button>
+                    </div>
+                }
+                else if (accessibleBoards.Count == 0)
+                {
+                    <EmptyState Title="No accessible boards"
+                                Message="Boards you are authorized to access in this workspace will appear here." />
+                }
+                else
+                {
+                    <div class="manager-workspace-board-grid">
+                        @foreach (var board in accessibleBoards)
+                        {
+                            <a class="manager-workspace-board-card"
+                               href="@($"/workspaces/{board.WorkspaceId}/boards/{board.Id}")"
+                               @key="board.Id">
+                                <span class="manager-workspace-resource-icon manager-workspace-board-icon" aria-hidden="true">
+                                    <i class="bi bi-columns-gap"></i>
+                                </span>
+                                <span class="manager-workspace-resource-copy">
+                                    <span class="manager-workspace-resource-title">
+                                        <strong>@board.Name</strong>
+                                        <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+                                    </span>
+                                    <span class="manager-workspace-board-meta">
+                                        @(board.Purpose == BoardPurpose.GeneralLearning ? "General / Learning" : "Project")
+                                        @if (board.CurrentUserRole.HasValue)
+                                        {
+                                            <span class="manager-workspace-board-role">@board.CurrentUserRole.Value</span>
+                                        }
+                                    </span>
+                                    @if (!string.IsNullOrWhiteSpace(board.Description))
+                                    {
+                                        <span class="manager-workspace-board-description">@board.Description</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(board.ProjectName))
+                                    {
+                                        <span class="manager-workspace-board-project">Project: @board.ProjectName</span>
+                                    }
+                                </span>
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        }
+    </div>
+}
+
+<ConfirmationDialog IsOpen="@isDeleteConfirmationOpen"
+                    Title="Delete workspace?"
+                    ConfirmText="Delete workspace"
+                    ConfirmingText="Deleting…"
+                    ConfirmButtonClass="btn-danger"
+                    IsBusy="@isDeletingWorkspace"
+                    OnCancel="CancelWorkspaceDeletion"
+                    OnConfirm="DeleteWorkspaceAsync">
+    <p>
+        This permanently deletes <strong>@workspace?.Name</strong>. Workspaces with projects, boards, or members cannot be deleted.
+    </p>
+</ConfirmationDialog>
+
+@code {
+    private const int ResourcePageSize = 100;
+    private const int MemberPageSize = 10;
+    private const int MemberIdPageSize = 100;
+    private const int CandidatePageSize = 10;
+
+    [Parameter]
+    public Guid? Id { get; set; }
+
+    private WorkspaceResponse? workspace;
+    private List<ProjectResponse> accessibleProjects = [];
+    private List<BoardResponse> accessibleBoards = [];
+    private PagedResponse<WorkspaceMemberResponse>? membersPage;
+    private PagedResponse<UserDirectoryResponse>? candidates;
+    private readonly HashSet<Guid> workspaceMemberIds = [];
+    private string? workspaceError;
+    private string? projectsError;
+    private string? boardsError;
+    private string? membersError;
+    private string? candidateError;
+    private string? memberActionError;
+    private string? workspaceActionError;
+    private string candidateSearch = string.Empty;
+    private bool isLoadingWorkspace;
+    private bool isLoadingProjects;
+    private bool isLoadingBoards;
+    private bool isLoadingMembers;
+    private bool isLoadingCandidates;
+    private bool canManageWorkspace;
+    private bool isAddingMember;
+    private bool isDeleteConfirmationOpen;
+    private bool isDeletingWorkspace;
+    private int candidatePage = 1;
+    private int currentMembersPage = 1;
+    private Guid? loadedWorkspaceId;
+    private long loadVersion;
+    private CancellationTokenSource? activeLoad;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id is not Guid workspaceId)
+        {
+            loadedWorkspaceId = null;
+            workspace = null;
+            accessibleProjects = [];
+            accessibleBoards = [];
+            membersPage = null;
+            candidates = null;
+            workspaceMemberIds.Clear();
+            canManageWorkspace = false;
+            activeLoad?.Cancel();
+            return;
+        }
+
+        if (loadedWorkspaceId == workspaceId)
+        {
+            return;
+        }
+
+        loadedWorkspaceId = workspaceId;
+        await LoadWorkspaceAsync(workspaceId);
+    }
+
+    private Task RetryLoadingAsync() =>
+        Id is Guid workspaceId
+            ? LoadWorkspaceAsync(workspaceId)
+            : Task.CompletedTask;
+
+    private async Task LoadWorkspaceAsync(Guid workspaceId)
+    {
+        activeLoad?.Cancel();
+        activeLoad?.Dispose();
+        var cancellation = activeLoad = new CancellationTokenSource();
+        var requestVersion = ++loadVersion;
+
+        workspace = null;
+        accessibleProjects = [];
+        accessibleBoards = [];
+        membersPage = null;
+        candidates = null;
+        workspaceMemberIds.Clear();
+        workspaceError = null;
+        projectsError = null;
+        boardsError = null;
+        membersError = null;
+        candidateError = null;
+        memberActionError = null;
+        workspaceActionError = null;
+        canManageWorkspace = false;
+        isLoadingWorkspace = true;
+        isLoadingProjects = false;
+        isLoadingBoards = false;
+        isLoadingMembers = false;
+        isLoadingCandidates = false;
+
+        try
+        {
+            workspace = await WorkspaceApiService.GetByIdAsync(
+                workspaceId,
+                cancellation.Token);
+
+            if (requestVersion != loadVersion)
+            {
+                return;
+            }
+
+            if (workspace is null)
+            {
+                workspaceError = "This workspace is unavailable or you do not have access.";
+                return;
+            }
+
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            canManageWorkspace = Guid.TryParse(currentUserId, out var userId) &&
+                                 workspace.OwnerId == userId;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (HttpRequestException)
+        {
+            workspaceError = "The workspace service could not be reached.";
+            return;
+        }
+        catch (JsonException)
+        {
+            workspaceError = "The workspace service returned an invalid response.";
+            return;
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingWorkspace = false;
+            }
+        }
+
+        isLoadingProjects = true;
+        isLoadingBoards = true;
+        isLoadingMembers = true;
+        if (canManageWorkspace)
+        {
+            isLoadingCandidates = true;
+        }
+        await Task.WhenAll(
+            LoadAccessibleProjectsAsync(workspaceId, requestVersion, cancellation.Token),
+            LoadAccessibleBoardsAsync(workspaceId, requestVersion, cancellation.Token),
+            LoadMembersAsync(1, workspaceId, requestVersion, cancellation.Token),
+            canManageWorkspace
+                ? LoadCandidatesAsync(1, workspaceId, requestVersion, cancellation.Token)
+                : Task.CompletedTask);
+    }
+
+    private Task LoadMembersAsync(int page) =>
+        Id is Guid workspaceId
+            ? LoadMembersAsync(
+                page,
+                workspaceId,
+                loadVersion,
+                CancellationToken.None)
+            : Task.CompletedTask;
+
+    private async Task LoadMembersAsync(
+        int page,
+        Guid workspaceId,
+        long requestVersion,
+        CancellationToken cancellationToken)
+    {
+        currentMembersPage = page;
+        isLoadingMembers = true;
+        membersError = null;
+
+        try
+        {
+            var response = await WorkspaceApiService.GetMembersAsync(
+                workspaceId,
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = MemberPageSize
+                },
+                cancellationToken);
+
+            if (requestVersion != loadVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                membersPage = null;
+                membersError = "Unable to load the workspace members.";
+                return;
+            }
+
+            membersPage = response;
+            if (page == 1 && canManageWorkspace)
+            {
+                workspaceMemberIds.Clear();
+                var memberPage = await WorkspaceApiService.GetMembersAsync(
+                    workspaceId,
+                    new PagedSearchRequest
+                    {
+                        Page = 1,
+                        PageSize = MemberIdPageSize
+                    },
+                    cancellationToken);
+
+                if (memberPage is null)
+                {
+                    membersPage = null;
+                    membersError = "Unable to verify workspace membership. Retry loading the members.";
+                    return;
+                }
+
+                foreach (var member in memberPage.Items)
+                {
+                    workspaceMemberIds.Add(member.UserId);
+                }
+
+                for (var idPage = 2; idPage <= memberPage.TotalPages; idPage++)
+                {
+                    var nextPage = await WorkspaceApiService.GetMembersAsync(
+                        workspaceId,
+                        new PagedSearchRequest
+                        {
+                            Page = idPage,
+                            PageSize = MemberIdPageSize
+                        },
+                        cancellationToken);
+
+                    if (nextPage is null)
+                    {
+                        membersPage = null;
+                        membersError = "Unable to verify workspace membership. Retry loading the members.";
+                        return;
+                    }
+
+                    foreach (var member in nextPage.Items)
+                    {
+                        workspaceMemberIds.Add(member.UserId);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                membersPage = null;
+                membersError = "The workspace member service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                membersPage = null;
+                membersError = "The workspace member service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingMembers = false;
+            }
+        }
+    }
+
+    private Task LoadCandidatesAsync(int page) =>
+        Id is Guid workspaceId
+            ? LoadCandidatesAsync(
+                page,
+                workspaceId,
+                loadVersion,
+                CancellationToken.None)
+            : Task.CompletedTask;
+
+    private async Task LoadCandidatesAsync(
+        int page,
+        Guid workspaceId,
+        long requestVersion,
+        CancellationToken cancellationToken)
+    {
+        candidatePage = page;
+        isLoadingCandidates = true;
+        candidateError = null;
+
+        try
+        {
+            var response = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = CandidatePageSize,
+                    Search = candidateSearch
+                },
+                cancellationToken);
+
+            if (requestVersion != loadVersion)
+            {
+                return;
+            }
+
+            if (response is null)
+            {
+                candidates = null;
+                candidateError = "Unable to load your direct reports.";
+                return;
+            }
+
+            candidates = response;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                candidates = null;
+                candidateError = "The employee directory could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                candidates = null;
+                candidateError = "The employee directory returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingCandidates = false;
+            }
+        }
+    }
+
+    private async Task HandleCandidateSearchChanged(string? search)
+    {
+        candidateSearch = search?.Trim() ?? string.Empty;
+        await LoadCandidatesAsync(1);
+    }
+
+    private async Task AddMemberAsync(UserDirectoryResponse candidate)
+    {
+        if (workspace is null || isAddingMember || !IsEligibleCandidate(candidate))
+        {
+            return;
+        }
+
+        isAddingMember = true;
+        memberActionError = null;
+
+        try
+        {
+            var added = await WorkspaceApiService.AddMemberAsync(
+                workspace.Id,
+                new AddWorkspaceMemberRequest
+                {
+                    UserId = candidate.UserId
+                });
+
+            if (added is null)
+            {
+                memberActionError =
+                    "The workspace service could not add this employee. Verify that they are not already a member and that they report directly to you.";
+                return;
+            }
+
+            await Task.WhenAll(
+                LoadMembersAsync(1),
+                LoadCandidatesAsync(candidatePage));
+        }
+        catch (HttpRequestException)
+        {
+            memberActionError = "The workspace service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            memberActionError = "The workspace service returned an invalid response.";
+        }
+        finally
+        {
+            isAddingMember = false;
+        }
+    }
+
+    private bool IsEligibleCandidate(UserDirectoryResponse candidate) =>
+        string.Equals(
+            candidate.Role,
+            "Employee",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static string GetUserName(UserDirectoryResponse user) =>
+        $"{user.FirstName} {user.LastName}".Trim();
+
+    private void EditWorkspace()
+    {
+        if (workspace is not null && canManageWorkspace)
+        {
+            Navigation.NavigateTo($"/manager/workspaces/{workspace.Id}/edit");
+        }
+    }
+
+    private void CancelWorkspaceDeletion()
+    {
+        if (!isDeletingWorkspace)
+        {
+            isDeleteConfirmationOpen = false;
+        }
+    }
+
+    private async Task DeleteWorkspaceAsync()
+    {
+        if (workspace is null || !canManageWorkspace || isDeletingWorkspace)
+        {
+            return;
+        }
+
+        isDeletingWorkspace = true;
+        workspaceActionError = null;
+        try
+        {
+            if (await WorkspaceApiService.DeleteAsync(workspace.Id))
+            {
+                Navigation.NavigateTo("/manager/workspaces");
+            }
+            else
+            {
+                workspaceActionError = "The workspace could not be deleted. Resolve any existing workspace relationships and try again.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            workspaceActionError = "The workspace service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            workspaceActionError = "The workspace service returned an invalid response.";
+        }
+        finally
+        {
+            isDeletingWorkspace = false;
+            isDeleteConfirmationOpen = false;
+        }
+    }
+
+    private async Task LoadAccessibleProjectsAsync(
+        Guid workspaceId,
+        long requestVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var results = new List<ProjectResponse>();
+            var page = 1;
+            int totalPages;
+            do
+            {
+                var response = await ProjectApiService.GetMineAsync(
+                    new ProjectQueryRequest
+                    {
+                        WorkspaceId = workspaceId,
+                        Page = page,
+                        PageSize = ResourcePageSize
+                    },
+                    cancellationToken);
+
+                if (response is null)
+                {
+                    if (requestVersion == loadVersion)
+                    {
+                        projectsError = "Unable to load projects you can access in this workspace.";
+                    }
+                    return;
+                }
+
+                results.AddRange(response.Items);
+                totalPages = response.TotalPages;
+                page++;
+            } while (page <= totalPages);
+
+            if (requestVersion == loadVersion)
+            {
+                accessibleProjects = results;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                projectsError = "The project service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                projectsError = "The project service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingProjects = false;
+            }
+        }
+    }
+
+    private async Task LoadAccessibleBoardsAsync(
+        Guid workspaceId,
+        long requestVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var results = new List<BoardResponse>();
+            var page = 1;
+            int totalPages;
+            do
+            {
+                var response = await BoardApiService.GetAsync(
+                    new BoardQueryRequest
+                    {
+                        WorkspaceId = workspaceId,
+                        Page = page,
+                        PageSize = ResourcePageSize
+                    },
+                    cancellationToken);
+
+                if (response is null)
+                {
+                    if (requestVersion == loadVersion)
+                    {
+                        boardsError = "Unable to load boards you can access in this workspace.";
+                    }
+                    return;
+                }
+
+                results.AddRange(response.Items);
+                totalPages = response.TotalPages;
+                page++;
+            } while (page <= totalPages);
+
+            if (requestVersion == loadVersion)
+            {
+                accessibleBoards = results;
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (HttpRequestException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                boardsError = "The board service could not be reached.";
+            }
+        }
+        catch (JsonException)
+        {
+            if (requestVersion == loadVersion)
+            {
+                boardsError = "The board service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (requestVersion == loadVersion)
+            {
+                isLoadingBoards = false;
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        activeLoad?.Cancel();
+        activeLoad?.Dispose();
+    }
+}

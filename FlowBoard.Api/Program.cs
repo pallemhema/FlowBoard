@@ -23,6 +23,7 @@ using FlowBoard.Domain.Enums;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -91,6 +92,20 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddControllers();
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy(
+        "InvitationActivation",
+        context => RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0,
+                AutoReplenishment = true
+            }));
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -153,33 +168,35 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    using var scope = app.Services.CreateScope();
+    // using var scope = app.Services.CreateScope();
 
-    var dbContext = scope.ServiceProvider
-        .GetRequiredService<FlowBoardDbContext>();
+    // var dbContext = scope.ServiceProvider
+    //     .GetRequiredService<FlowBoardDbContext>();
 
-    var passwordHasher = scope.ServiceProvider
-        .GetRequiredService<IPasswordHasher>();
+    // var passwordHasher = scope.ServiceProvider
+    //     .GetRequiredService<IPasswordHasher>();
 
-    var logger = scope.ServiceProvider
-        .GetRequiredService<ILoggerFactory>()
-        .CreateLogger("DevelopmentDataSeeder");
+    // var logger = scope.ServiceProvider
+    //     .GetRequiredService<ILoggerFactory>()
+    //     .CreateLogger("DevelopmentDataSeeder");
 
-    var seedSettings = app.Configuration
-        .GetSection("DevelopmentSeed")
-        .Get<DevelopmentSeedSettings>() ?? new DevelopmentSeedSettings();
+    // var seedSettings = app.Configuration
+    //     .GetSection("DevelopmentSeed")
+    //     .Get<DevelopmentSeedSettings>() ?? new DevelopmentSeedSettings();
 
-    await DevelopmentDataSeeder.SeedAsync(
-        dbContext,
-        passwordHasher,
-        logger,
-        seedSettings,
-        app.Environment);
+    // await DevelopmentDataSeeder.SeedAsync(
+    //     dbContext,
+    //     passwordHasher,
+    //     logger,
+    //     seedSettings,
+    //     app.Environment);
 }
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
 app.UseHttpsRedirection();
 
+app.UseRouting();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

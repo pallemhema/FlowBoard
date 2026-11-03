@@ -1,0 +1,40 @@
+<article class="entity-card entity-card-interactive h-100 p-3 p-lg-4 board-card"
+     role="link"
+     tabindex="0"
+     @onclick="HandleOpen"
+     @onkeydown="HandleKeyDown">
+
+    <div class="d-flex align-items-start justify-content-between gap-3">
+        <div class="d-flex align-items-start gap-3">
+            <span class="entity-icon board-icon"><i class="bi bi-kanban" aria-hidden="true"></i></span>
+            <div class="min-w-0">
+                <h2 class="h5 fw-semibold mb-2">@Board.Name</h2>
+                <p class="entity-card-description mb-0">
+                    @(string.IsNullOrWhiteSpace(Board.Description) ? "No description provided." : Board.Description)
+                </p>
+            </div>
+        </div>
+        <i class="bi bi-arrow-up-right text-muted" aria-hidden="true"></i>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired]
+    public BoardResponse Board { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<BoardResponse> OnOpen { get; set; }
+
+    private async Task HandleOpen()
+    {
+        await OnOpen.InvokeAsync(Board);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+        {
+            await HandleOpen();
+        }
+    }
+}

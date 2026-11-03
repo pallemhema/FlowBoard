@@ -30,9 +30,7 @@ public sealed class BoardAccessContext
         IsWorkspaceOwner ||
         IsProjectManager;
 
-    public bool CanEditContent =>
-        CanManageBoard ||
-        MemberRole == BoardMemberRole.Editor;
+    public bool CanEditContent => CanManageBoard;
 
     public bool CanComment => CanView;
 }

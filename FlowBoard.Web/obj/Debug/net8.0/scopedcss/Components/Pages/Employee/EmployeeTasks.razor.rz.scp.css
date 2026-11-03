@@ -1,0 +1,224 @@
+.employee-tasks[b-7aa05cmfc0] {
+  max-width: 1540px;
+}
+
+.task-filters[b-7aa05cmfc0] {
+  display: grid;
+  grid-template-columns: minmax(16rem, 1fr) repeat(3, minmax(10rem, 0.3fr));
+  align-items: end;
+  gap: 0.9rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--flowboard-line);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.task-search[b-7aa05cmfc0],
+.task-filter-field[b-7aa05cmfc0] {
+  min-width: 0;
+}
+
+.task-filter-field label[b-7aa05cmfc0] {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--flowboard-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.task-loading[b-7aa05cmfc0] {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 3rem;
+  color: var(--flowboard-muted);
+  font-size: 0.85rem;
+}
+
+.task-error[b-7aa05cmfc0] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #f3d9d7;
+  border-radius: 0.7rem;
+  color: #9c302a;
+  background: #fff8f7;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.task-results-heading[b-7aa05cmfc0] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.7rem;
+  color: var(--flowboard-ink);
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.task-results-heading span[b-7aa05cmfc0] {
+  color: var(--flowboard-muted);
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.task-list[b-7aa05cmfc0] {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.task-card[b-7aa05cmfc0] {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.2rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--flowboard-line);
+  border-radius: 0.85rem;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(32, 36, 58, 0.035);
+}
+
+.task-card-main[b-7aa05cmfc0] {
+  min-width: 0;
+}
+
+.task-card-title-row[b-7aa05cmfc0] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+
+.task-card h2[b-7aa05cmfc0] {
+  margin: 0;
+  color: var(--flowboard-ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.task-description[b-7aa05cmfc0] {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0.4rem 0 0;
+  color: var(--flowboard-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.task-context[b-7aa05cmfc0] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.9rem;
+  margin-top: 0.6rem;
+  color: var(--flowboard-muted);
+  font-size: 0.72rem;
+}
+
+.task-context span[b-7aa05cmfc0] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.task-card-side[b-7aa05cmfc0] {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.task-due-date[b-7aa05cmfc0] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.task-due-date span[b-7aa05cmfc0],
+.task-no-date[b-7aa05cmfc0] {
+  color: var(--flowboard-muted);
+  font-size: 0.68rem;
+}
+
+.task-due-date time[b-7aa05cmfc0] {
+  color: var(--flowboard-ink);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.task-priority[b-7aa05cmfc0] {
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.task-priority-low[b-7aa05cmfc0] {
+  color: #39765f;
+  background: #eaf6f0;
+}
+
+.task-priority-medium[b-7aa05cmfc0] {
+  color: #4e58a6;
+  background: #eef0ff;
+}
+
+.task-priority-high[b-7aa05cmfc0] {
+  color: #9a5c0c;
+  background: #fff3df;
+}
+
+.task-priority-critical[b-7aa05cmfc0] {
+  color: #a43832;
+  background: #fff0ef;
+}
+
+@media (max-width: 900px) {
+  .task-filters[b-7aa05cmfc0] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-search[b-7aa05cmfc0] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .task-filters[b-7aa05cmfc0] {
+    grid-template-columns: 1fr;
+  }
+
+  .task-search[b-7aa05cmfc0] {
+    grid-column: auto;
+  }
+
+  .task-card[b-7aa05cmfc0] {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .task-card-side[b-7aa05cmfc0] {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .task-due-date[b-7aa05cmfc0] {
+    align-items: flex-start;
+  }
+}

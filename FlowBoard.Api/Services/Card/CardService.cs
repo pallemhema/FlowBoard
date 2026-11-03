@@ -1,6 +1,7 @@
 using FlowBoard.Api.Exceptions;
 using FlowBoard.Api.Services.BoardAuthorization;
 using FlowBoard.Api.Services.TaskAssignments;
+using FlowBoard.Api.Services.Projects;
 using FlowBoard.Domain.Entities;
 using FlowBoard.Domain.Enums;
 using FlowBoard.Infrastructure.Data;
@@ -16,15 +17,18 @@ public class CardService : ICardService
     private readonly FlowBoardDbContext _dbContext;
     private readonly IBoardAuthorizationService _boardAuthorizationService;
     private readonly ITaskAssignmentGuard _taskAssignmentGuard;
+    private readonly IProjectService _projectService;
 
     public CardService(
         FlowBoardDbContext dbContext,
         IBoardAuthorizationService boardAuthorizationService,
-        ITaskAssignmentGuard taskAssignmentGuard)
+        ITaskAssignmentGuard taskAssignmentGuard,
+        IProjectService projectService)
     {
         _dbContext = dbContext;
         _boardAuthorizationService = boardAuthorizationService;
         _taskAssignmentGuard = taskAssignmentGuard;
+        _projectService = projectService;
     }
 
     // ============================================================
@@ -129,94 +133,51 @@ public class CardService : ICardService
         // ============================================================
 
         var query = _dbContext.Cards
-            .AsNoTracking()
-            .Include(x => x.AssignedUser)
-            .Where(x => x.BoardColumnId == columnId)
-            .AsQueryable();
+            .Where(card => card.BoardColumnId == columnId);
 
-        // ============================================================
-        // SEARCH
-        // ============================================================
+        return await GetPagedCardsAsync(query, request, cancellationToken);
+    }
 
-        if (!string.IsNullOrWhiteSpace(request.Search))
+    public async Task<PagedResponse<CardResponse>> GetByBoardAsync(
+        Guid boardId,
+        CardQueryRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var boardExists = await _dbContext.Boards
+            .AnyAsync(board => board.Id == boardId, cancellationToken);
+
+        if (!boardExists)
         {
-            var search = request.Search.Trim();
-
-            query = query.Where(x =>
-                x.Title.Contains(search) ||
-                (x.Description != null &&
-                 x.Description.Contains(search)));
+            throw new NotFoundException("Board was not found.");
         }
 
-        // ============================================================
-        // PRIORITY FILTER
-        // ============================================================
-
-        if (request.Priority.HasValue)
-        {
-            var priority =
-                MapToDomainPriority(request.Priority.Value);
-
-            query = query.Where(x =>
-                x.Priority == priority);
-        }
-
-        // ============================================================
-        // ASSIGNED USER FILTER
-        // ============================================================
-
-        if (request.AssignedUserId.HasValue)
-        {
-            query = query.Where(x =>
-                x.AssignedUserId ==
-                request.AssignedUserId.Value);
-        }
-
-        // ============================================================
-        // TOTAL COUNT
-        // ============================================================
-
-        var totalCount = await query.CountAsync(
+        await _boardAuthorizationService.EnsureCanViewAsync(
+            boardId,
             cancellationToken);
 
-        // ============================================================
-        // TOTAL PAGES
-        // ============================================================
+        var query = _dbContext.Cards
+            .Where(card => card.BoardColumn.BoardId == boardId);
 
-        var totalPages = (int)Math.Ceiling(
-            totalCount / (double)request.PageSize);
+        return await GetPagedCardsAsync(query, request, cancellationToken);
+    }
 
-        // ============================================================
-        // PAGINATION
-        // ============================================================
+    public async Task<PagedResponse<CardResponse>> GetByProjectAsync(
+        Guid projectId,
+        CardQueryRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await _projectService.GetByIdAsync(projectId, cancellationToken);
 
-        var cards = await query
-            .OrderBy(x => x.Position)
-            .ThenBy(x => x.CreatedAt)
-            .Skip(
-                (request.Page - 1) *
-                request.PageSize)
-            .Take(request.PageSize)
-            .ToListAsync(cancellationToken);
+        var accessibleBoardIds = _boardAuthorizationService
+            .GetAccessibleBoardsQuery()
+            .Where(board => board.ProjectId == projectId)
+            .Select(board => board.Id);
+        var query = _dbContext.Cards
+            .Where(card =>
+                card.BoardColumn.Board.ProjectId == projectId &&
+                accessibleBoardIds.Contains(card.BoardColumn.BoardId));
 
-        // ============================================================
-        // RESPONSE
-        // ============================================================
-
-        return new PagedResponse<CardResponse>
-        {
-            Items = cards
-                .Select(MapToResponse)
-                .ToList(),
-
-            Page = request.Page,
-
-            PageSize = request.PageSize,
-
-            TotalCount = totalCount,
-
-            TotalPages = totalPages
-        };
+        return await GetPagedCardsAsync(query, request, cancellationToken);
     }
     // ============================================================
     // GET BY ID
@@ -355,6 +316,42 @@ public class CardService : ICardService
             cancellationToken);
     }
 
+    public async Task SetAssigneeAsync(
+        Guid cardId,
+        Guid? employeeId,
+        CancellationToken cancellationToken = default)
+    {
+        var card = await _dbContext.Cards
+            .Include(item => item.BoardColumn)
+            .FirstOrDefaultAsync(item => item.Id == cardId, cancellationToken);
+
+        if (card is null)
+        {
+            throw new NotFoundException("Card was not found.");
+        }
+
+        await _boardAuthorizationService.EnsureCanEditContentAsync(
+            card.BoardColumn.BoardId,
+            cancellationToken);
+
+        await using var transaction =
+            await _dbContext.Database.BeginTransactionAsync(
+                IsolationLevel.Serializable,
+                cancellationToken);
+
+        if (employeeId.HasValue)
+        {
+            await _taskAssignmentGuard.ValidateAssigneeAsync(
+                card.BoardColumn.BoardId,
+                employeeId.Value,
+                cancellationToken);
+        }
+
+        card.AssignedUserId = employeeId;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     // ============================================================
     // DELETE
     // ============================================================
@@ -422,6 +419,66 @@ public class CardService : ICardService
             AssignedUserName = card.AssignedUser is null
                 ? null
                 : $"{card.AssignedUser.FirstName} {card.AssignedUser.LastName}"
+        };
+    }
+
+    private async Task<PagedResponse<CardResponse>> GetPagedCardsAsync(
+        IQueryable<Card> query,
+        CardQueryRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (request.Page < 1 || request.PageSize is < 1 or > 100)
+        {
+            throw new ValidationException(
+                "Page must be greater than zero and page size must be between 1 and 100.");
+        }
+
+        if (request.Priority.HasValue &&
+            !Enum.IsDefined(request.Priority.Value))
+        {
+            throw new ValidationException("The selected card priority is invalid.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = request.Search.Trim();
+            query = query.Where(card =>
+                card.Title.Contains(search) ||
+                (card.Description != null &&
+                 card.Description.Contains(search)));
+        }
+
+        if (request.Priority.HasValue)
+        {
+            var priority = MapToDomainPriority(request.Priority.Value);
+            query = query.Where(card => card.Priority == priority);
+        }
+
+        if (request.AssignedUserId.HasValue)
+        {
+            query = query.Where(
+                card => card.AssignedUserId == request.AssignedUserId.Value);
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var cards = await query
+            .AsNoTracking()
+            .Include(card => card.AssignedUser)
+            .OrderBy(card => card.Position)
+            .ThenBy(card => card.CreatedAt)
+            .ThenBy(card => card.Id)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResponse<CardResponse>
+        {
+            Items = cards.Select(MapToResponse).ToList(),
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalCount = totalCount,
+            TotalPages = (int)Math.Ceiling(
+                totalCount / (double)request.PageSize)
         };
     }
 

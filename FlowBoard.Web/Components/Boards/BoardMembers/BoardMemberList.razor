@@ -1,0 +1,47 @@
+@if (Members.Count == 0)
+{
+    <div class="empty-state py-4">
+
+            <h5>
+                No members yet
+            </h5>
+
+            <p class="text-muted mb-3">
+                Add members to collaborate on this board.
+            </p>
+
+    </div>
+}
+else
+{
+    <div class="entity-grid">
+
+        @foreach (var member in Members)
+        {
+            <BoardMemberCard
+                @key="member.UserId"
+                Member="member"
+                CanManageBoard="CanManageBoard"
+                OnEditRole="OnEditRole"
+                OnRemove="OnRemove" />
+        }
+
+    </div>
+}
+
+@code {
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<BoardMemberResponse> Members { get; set; }
+        = [];
+
+    [Parameter]
+    public bool CanManageBoard { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardMemberResponse> OnEditRole { get; set; }
+
+    [Parameter]
+    public EventCallback<BoardMemberResponse> OnRemove { get; set; }
+
+}

@@ -1,103 +1,106 @@
-﻿@using Microsoft.AspNetCore.Components.Authorization
-@inject AuthenticationService AuthenticationService
+@using System.Security.Claims
+@using FlowBoard.Web.Navigation
+
+@inject IAuthenticationService AuthenticationService
+@inject IAuthorizationService AuthorizationService
 @inject NavigationManager Navigation
 
-<div class="sidebar-brand">
-    <a class="brand-link" href="/">
-        <span class="brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
-        <span>FlowBoard</span>
-    </a>
-    <label class="mobile-menu-toggle" for="nav-toggle" aria-label="Toggle navigation menu">
-        <i class="bi bi-list" aria-hidden="true"></i>
-    </label>
-</div>
+<div class="nav-menu @(IsCollapsed ? "nav-menu-collapsed" : null)">
+    <div class="sidebar-brand">
+        <a class="brand-link" href="/" aria-label="FlowBoard home">
+            <span class="brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+            <span class="brand-name">FlowBoard</span>
+        </a>
+        <button class="sidebar-collapse-button"
+                type="button"
+                aria-label="@(IsCollapsed ? "Expand sidebar" : "Collapse sidebar")"
+                title="@(IsCollapsed ? "Expand sidebar" : "Collapse sidebar")"
+                @onclick="OnToggleCollapse">
+            <i class="bi @(IsCollapsed ? "bi-chevron-right" : "bi-chevron-left")" aria-hidden="true"></i>
+        </button>
+    </div>
 
-<input id="nav-toggle" type="checkbox" class="navbar-toggler" aria-label="Toggle navigation menu" @bind="isNavigationOpen" />
+    <nav class="nav-scrollable" aria-label="Main navigation">
+        @foreach (var itemGroup in navigationSections)
+        {
+            <div class="nav-section-label">@itemGroup.Label</div>
+            @foreach (var item in itemGroup.Items)
+            {
+                <div class="nav-item">
+                    @if (item.Href is not null)
+                    {
+                        <NavLink class="nav-link"
+                                 href="@item.Href"
+                                 Match="@(item.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+                                 title="@(IsCollapsed ? item.Label : null)"
+                                 @onclick="OnMobileClose">
+                            <i class="bi @item.Icon" aria-hidden="true"></i>
+                            <span>@item.Label</span>
+                        </NavLink>
+                    }
+                    else
+                    {
+                        <span class="nav-link nav-link-disabled"
+                              aria-disabled="true"
+                              title="@(IsCollapsed ? $"{item.Label} - Available in a later phase" : null)">
+                            <i class="bi @item.Icon" aria-hidden="true"></i>
+                            <span>@item.Label</span>
+                            <span class="nav-coming-soon">Soon</span>
+                        </span>
+                    }
+                </div>
+            }
+        }
 
-<div class="nav-scrollable" @onclick="CloseNavigation">
-    <nav class="nav flex-column" aria-label="Main navigation">
-        <div class="nav-section-label">Workspace</div>
+        <div class="nav-section-label nav-account-label">Account</div>
         <div class="nav-item">
             <NavLink class="nav-link"
-                     href=""
-                     Match="NavLinkMatch.All">
-                <i class="bi bi-house-door" aria-hidden="true"></i>
-                <span>Home</span>
+                     href="/profile"
+                     title="@(IsCollapsed ? "Profile" : null)"
+                     @onclick="OnMobileClose">
+                <i class="bi bi-person-circle" aria-hidden="true"></i>
+                <span>Profile</span>
             </NavLink>
         </div>
 
-        <AuthorizeView>
-            <Authorized>
-                <div class="nav-item">
-                    <NavLink class="nav-link"
-                             href="workspaces">
-                        <i class="bi bi-grid" aria-hidden="true"></i>
-                        <span>Workspaces</span>
-                    </NavLink>
-                </div>
-                <div class="nav-section-label mt-4">Account</div>
-                <div class="nav-item">
-                    <NavLink class="nav-link"
-                             href="profile">
-                        <i class="bi bi-person-circle" aria-hidden="true"></i>
-                        <span>Profile</span>
-                    </NavLink>
-                </div>
-                <div class="nav-item">
-                    <button class="nav-link nav-logout"
-                            @onclick="LogoutAsync">
-                        <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
-                        <span>Log out</span>
-                    </button>
-                </div>
-            </Authorized>
-            <NotAuthorized>
-                <div class="nav-section-label mt-4">Account</div>
-                <div class="nav-item">
-                    <NavLink class="nav-link"
-                             href="login">
-                        <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>
-                        <span>Log in</span>
-                    </NavLink>
-                </div>
-                <div class="nav-item">
-                    <NavLink class="nav-link"
-                             href="register">
-                        <i class="bi bi-person-plus" aria-hidden="true"></i>
-                        <span>Create account</span>
-                    </NavLink>
-                </div>
-            </NotAuthorized>
-        </AuthorizeView>
+        <div class="nav-item">
+            <button class="nav-link nav-logout"
+                    type="button"
+                    title="@(IsCollapsed ? "Log out" : null)"
+                    @onclick="LogoutAsync">
+                <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                <span>Log out</span>
+            </button>
+        </div>
     </nav>
 </div>
 
 @code {
+    [Parameter, EditorRequired]
+    public ClaimsPrincipal User { get; set; } = null!;
 
-    private bool isNavigationOpen;
+    [Parameter]
+    public bool IsCollapsed { get; set; }
 
-    protected override void OnInitialized()
+    [Parameter]
+    public EventCallback OnToggleCollapse { get; set; }
+
+    [Parameter]
+    public EventCallback OnMobileClose { get; set; }
+
+    private IReadOnlyList<AppNavigationSection> navigationSections = [];
+
+    protected override async Task OnParametersSetAsync()
     {
-        Console.WriteLine(
-            "========== NAV MENU INITIALIZED ==========");
-    }
-
-    private void CloseNavigation()
-    {
-        isNavigationOpen = false;
+        var authorizedPolicies = await AppNavigation.GetAuthorizedPoliciesAsync(
+            User,
+            AuthorizationService);
+        navigationSections = AppNavigation.ForAuthorizedPolicies(authorizedPolicies);
     }
 
     private async Task LogoutAsync()
     {
-        Console.WriteLine(
-            "========== NAV MENU LOGOUT CLICKED ==========");
-
         await AuthenticationService.LogoutAsync();
-
-        Console.WriteLine(
-            "NAV MENU: Logout completed.");
-
-        Navigation.NavigateTo(
-            "/login");
+        Navigation.NavigateTo("/login");
     }
 }

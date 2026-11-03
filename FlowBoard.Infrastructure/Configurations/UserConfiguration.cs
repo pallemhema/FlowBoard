@@ -37,5 +37,8 @@ public class UserConfiguration
             .HasConversion<string>()
             .HasMaxLength(50);
 
+        builder.Property(x => x.IsActive)
+            .IsRequired()
+            .HasDefaultValue(true);
     }
 }

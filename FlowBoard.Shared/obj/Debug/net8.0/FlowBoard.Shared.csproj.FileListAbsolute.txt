@@ -9,3 +9,4 @@
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/refint/FlowBoard.Shared.dll
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.pdb
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/ref/FlowBoard.Shared.dll
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Shared/obj/Debug/net8.0/FlowBoard.Shared.sourcelink.json

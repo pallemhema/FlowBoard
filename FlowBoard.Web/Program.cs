@@ -1,4 +1,5 @@
 using FlowBoard.Web.Components;
+using FlowBoard.Web.Authorization;
 using FlowBoard.Web.Services.Api;
 using FlowBoard.Web.Services.Authentication;
 using FlowBoard.Web.Services.UI;
@@ -40,7 +41,6 @@ builder.Services.AddHttpClient(
 // Used when FlowBoard.Web calls the backend API:
 //
 //     POST /api/auth/login
-//     POST /api/auth/register
 //     POST /api/auth/refresh
 //     POST /api/auth/logout
 //
@@ -104,7 +104,7 @@ builder.Services
                 "/access-denied";
         });
 
-builder.Services.AddAuthorizationCore();
+builder.Services.AddAuthorizationCore(AuthorizationPolicies.Configure);
 
 builder.Services.AddAuthorization();
 
@@ -167,6 +167,11 @@ builder.Services.AddScoped<IBoardApiService, BoardApiService>();
 builder.Services.AddScoped<IBoardColumnApiService, BoardColumnApiService>();
 builder.Services.AddScoped<IBoardMemberApiService, BoardMemberApiService>();
 builder.Services.AddScoped<IUserDirectoryApiService, UserDirectoryApiService>();
+builder.Services.AddScoped<IUserManagementApiService, UserManagementApiService>();
+builder.Services.AddScoped<IManagerEmployeeApiService, ManagerEmployeeApiService>();
+builder.Services.AddScoped<IProjectApiService, ProjectApiService>();
+builder.Services.AddScoped<ITeamApiService, TeamApiService>();
+builder.Services.AddScoped<ITaskApiService, TaskApiService>();
 
 builder.Services.AddScoped<ICardApiService, CardApiService>();
 builder.Services.AddScoped<ICardCommentApiService, CardCommentApiService>();

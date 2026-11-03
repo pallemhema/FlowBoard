@@ -26,29 +26,6 @@ window.flowBoardAuth = {
 
 
     // ============================================================
-    // REGISTER
-    // Browser → FlowBoard.Web /auth/register
-    // ============================================================
-    register: async function (request) {
-
-        const response = await fetch('/auth/register', {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(request)
-        });
-
-        if (!response.ok) {
-            return null;
-        }
-
-        return await response.json();
-    },
-
-
-    // ============================================================
     // REFRESH
     // ============================================================
     refresh: async function () {

@@ -7,4 +7,6 @@ public class AuthenticationResult
     public string RefreshToken { get; set; } = string.Empty;
 
     public DateTime ExpiresAt { get; set; }
+
+    public DateTime RefreshTokenExpiresAt { get; set; }
 }

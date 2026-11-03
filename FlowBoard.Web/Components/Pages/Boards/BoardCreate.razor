@@ -1,4 +1,5 @@
 @page "/workspaces/{WorkspaceId:guid}/boards/create"
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 @inject IBoardApiService BoardApiService
 @inject NavigationManager Navigation
 

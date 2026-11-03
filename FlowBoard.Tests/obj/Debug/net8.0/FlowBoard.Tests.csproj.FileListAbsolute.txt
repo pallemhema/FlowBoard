@@ -170,3 +170,4 @@
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Tests/bin/Debug/net8.0/FlowBoard.Domain.pdb
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Tests/bin/Debug/net8.0/FlowBoard.Infrastructure.pdb
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Tests/bin/Debug/net8.0/FlowBoard.Shared.pdb
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Tests/obj/Debug/net8.0/FlowBoard.Tests.sourcelink.json

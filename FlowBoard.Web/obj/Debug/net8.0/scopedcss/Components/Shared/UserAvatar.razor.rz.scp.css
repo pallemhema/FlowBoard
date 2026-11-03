@@ -1,0 +1,17 @@
+.user-avatar[b-o0qr7xi7oj] {
+  display: grid;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  flex: 0 0 var(--avatar-size);
+  place-items: center;
+  border: 1px solid #dfdef7;
+  border-radius: 50%;
+  color: #514abf;
+  background: #f0efff;
+  font-size: calc(var(--avatar-size) * 0.31);
+  font-weight: 750;
+}
+
+.user-avatar-square[b-o0qr7xi7oj] {
+  border-radius: 0.85rem;
+}

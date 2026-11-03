@@ -1,13 +1,11 @@
 
 
 @page "/workspaces/{WorkspaceId:guid}/boards/{BoardId:guid}/columns/{ColumnId:guid}"
-
-@using FlowBoard.Shared.DTOs.BoardColumns
-@using FlowBoard.Shared.DTOs.Cards
-@using FlowBoard.Shared.DTOs.Common
+@attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 
 @inject IBoardColumnApiService BoardColumnApiService
 @inject ICardApiService CardApiService
+@inject IBoardApiService BoardApiService
 @inject NavigationManager Navigation
 
 <PageTitle>Column</PageTitle>
@@ -108,6 +106,7 @@
         {
             <CardList
                 Cards="cards"
+                CanManageBoard="@canManageBoard"
                 SearchTerm="cardSearch"
                 OnCreate="CreateCard"
                 OnOpen="OpenCard"
@@ -150,6 +149,8 @@
 
     private BoardColumnResponse? column;
 
+    private bool canManageBoard;
+
     private List<CardResponse> cards = [];
 
     private string? cardSearch;
@@ -191,6 +192,14 @@
 
         try
         {
+            var board = await BoardApiService.GetByIdAsync(BoardId);
+            if (board is null || board.WorkspaceId != WorkspaceId)
+            {
+                errorMessage = "The board could not be found in this workspace.";
+                return;
+            }
+
+            canManageBoard = board.CanManageBoard;
             await LoadColumnAsync();
 
             await LoadCardsAsync();
@@ -345,17 +354,5 @@
         }
 
         await LoadCardsAsync(page);
-    }
-
-
-    // ============================================================
-    // BACK TO BOARD
-    // ============================================================
-
-    private void BackToBoard()
-    {
-        Navigation.NavigateTo(
-            $"/workspaces/{WorkspaceId}" +
-            $"/boards/{BoardId}");
     }
 }

@@ -10,6 +10,10 @@ public class WorkspaceResponse
 
     public Guid OwnerId { get; set; }
 
+    public string? OwnerName { get; set; }
+
+    public string? OwnerEmail { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime? ModifiedAt { get; set; }

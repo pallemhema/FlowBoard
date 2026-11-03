@@ -1,26 +1,216 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@using System.Security.Claims
+@using FlowBoard.Web.Authorization
 
-@inject AuthenticationService AuthenticationService
+@inject IAuthenticationService AuthenticationService
 @inject NavigationManager Navigation
 
-<div class="page app-shell">
+<AuthorizeView Policy="@AuthorizationPolicies.AuthenticatedUser">
+    <Authorized Context="authenticationState">
+        <div class="app-shell">
+            <aside id="app-sidebar"
+                   class="sidebar @(isSidebarCollapsed ? "sidebar-collapsed" : null) @(isMobileMenuOpen ? "sidebar-mobile-open" : null)">
+                <NavMenu User="authenticationState.User"
+                         IsCollapsed="isSidebarCollapsed"
+                         OnToggleCollapse="ToggleSidebar"
+                         OnMobileClose="CloseMobileMenu" />
+            </aside>
 
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+            @if (isMobileMenuOpen)
+            {
+                <button class="sidebar-backdrop"
+                        type="button"
+                        aria-label="Close navigation menu"
+                        @onclick="CloseMobileMenu">
+                </button>
+            }
 
-    <main class="app-main">
-        <div class="app-topbar d-flex align-items-center justify-content-between">
-            <span class="app-topbar-label">Your projects, in focus</span>
-            <span class="app-topbar-label d-none d-sm-inline">
-                Plan <span class="mx-1">·</span> Align <span class="mx-1">·</span> Deliver
-            </span>
+            <main class="app-main">
+                <header class="app-topbar" @onclick="CloseGlobalSearch">
+                    <button class="topbar-menu-button"
+                            type="button"
+                            aria-label="Open navigation menu"
+                            aria-controls="app-sidebar"
+                            aria-expanded="@isMobileMenuOpen"
+                            @onclick="ToggleMobileMenu">
+                        <i class="bi bi-list" aria-hidden="true"></i>
+                    </button>
+
+                    <div class="topbar-context">
+                        <span class="topbar-context-label">FlowBoard</span>
+                        <span class="topbar-context-divider" aria-hidden="true">/</span>
+                        <span class="topbar-context-page">@GetPageContext()</span>
+                    </div>
+
+                    <div class="topbar-actions">
+                        <GlobalSearch @ref="globalSearch"
+                                      SearchStateChanged="HandleGlobalSearchStateChanged" />
+
+                        <details class="profile-menu">
+                            <summary aria-label="Open account menu">
+                                <span class="user-avatar" aria-hidden="true">@GetInitials(authenticationState.User)</span>
+                                <span class="profile-menu-copy">
+                                    <span class="profile-name">@GetDisplayName(authenticationState.User)</span>
+                                    <span class="profile-role">@GetRole(authenticationState.User)</span>
+                                </span>
+                                <i class="bi bi-chevron-down profile-chevron" aria-hidden="true"></i>
+                            </summary>
+                            <div class="profile-menu-panel">
+                                <div class="profile-menu-identity">
+                                    <strong>@GetDisplayName(authenticationState.User)</strong>
+                                    <span>@GetEmail(authenticationState.User)</span>
+                                </div>
+                                <NavLink class="dropdown-item" href="/profile">
+                                    <i class="bi bi-person" aria-hidden="true"></i>
+                                    Profile
+                                </NavLink>
+                                <button class="dropdown-item profile-logout"
+                                        type="button"
+                                        @onclick="LogoutAsync">
+                                    <i class="bi bi-box-arrow-right" aria-hidden="true"></i>
+                                    Log out
+                                </button>
+                            </div>
+                        </details>
+                    </div>
+                </header>
+
+                @if (isGlobalSearchOpen)
+                {
+                    <button type="button"
+                            class="global-search-backdrop"
+                            aria-label="Close search results"
+                            @onclick="CloseGlobalSearch">
+                    </button>
+                }
+
+                <div class="content">
+                    @Body
+                    <Toast />
+                </div>
+            </main>
         </div>
-
-        <div class="content">
-            @Body
-            <Toast />
+    </Authorized>
+    <NotAuthorized>
+        <div class="public-shell">
+            <header class="public-topbar">
+                <a class="public-brand" href="/">
+                    <span class="brand-mark"><i class="bi bi-kanban-fill" aria-hidden="true"></i></span>
+                    <span>FlowBoard</span>
+                </a>
+                <nav class="public-actions" aria-label="Account navigation">
+                    <NavLink href="/login">Log in</NavLink>
+                </nav>
+            </header>
+            <main class="public-content">
+                @Body
+                <Toast />
+            </main>
         </div>
-    </main>
+    </NotAuthorized>
+</AuthorizeView>
 
-</div>
+@code {
+    private bool isSidebarCollapsed;
+    private bool isMobileMenuOpen;
+    private bool isGlobalSearchOpen;
+    private GlobalSearch? globalSearch;
+
+    private void HandleGlobalSearchStateChanged(bool isOpen)
+    {
+        isGlobalSearchOpen = isOpen;
+    }
+
+    private async Task CloseGlobalSearch()
+    {
+        if (!isGlobalSearchOpen)
+        {
+            return;
+        }
+
+        isGlobalSearchOpen = false;
+        if (globalSearch is not null)
+        {
+            await globalSearch.CloseAsync();
+        }
+    }
+
+    private void ToggleSidebar()
+    {
+        isSidebarCollapsed = !isSidebarCollapsed;
+    }
+
+    private void ToggleMobileMenu()
+    {
+        isMobileMenuOpen = !isMobileMenuOpen;
+    }
+
+    private void CloseMobileMenu()
+    {
+        isMobileMenuOpen = false;
+    }
+
+    private string GetPageContext()
+    {
+        var firstSegment = Navigation.ToBaseRelativePath(Navigation.Uri)
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault();
+
+        return string.IsNullOrWhiteSpace(firstSegment)
+            ? "Home"
+            : char.ToUpperInvariant(firstSegment[0]) + firstSegment[1..];
+    }
+
+    private static string GetDisplayName(ClaimsPrincipal user)
+    {
+        var displayName = user.Identity?.Name;
+        return string.IsNullOrWhiteSpace(displayName)
+            ? GetEmail(user)
+            : displayName;
+    }
+
+    private static string GetEmail(ClaimsPrincipal user)
+    {
+        return user.FindFirst(ClaimTypes.Email)?.Value
+            ?? user.FindFirst("email")?.Value
+            ?? string.Empty;
+    }
+
+    private static string GetRole(ClaimsPrincipal user)
+    {
+        return user.FindAll(ClaimTypes.Role)
+            .Select(claim => claim.Value)
+            .FirstOrDefault()
+            ?? "Account";
+    }
+
+    private static string GetInitials(ClaimsPrincipal user)
+    {
+        var displayName = GetDisplayName(user);
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            return "FB";
+        }
+
+        var words = displayName.Split(
+            new[] { ' ', '.', '@', '-', '_' },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        if (words.Length == 0)
+        {
+            return "FB";
+        }
+
+        return words.Length == 1
+            ? words[0][..1].ToUpperInvariant()
+            : string.Concat(
+                words[0][..1],
+                words[^1][..1]).ToUpperInvariant();
+    }
+
+    private async Task LogoutAsync()
+    {
+        await AuthenticationService.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+}
