@@ -6,6 +6,10 @@ public interface IBoardAuthorizationService
 {
     IQueryable<Board> GetAccessibleBoardsQuery();
 
+    Task EnsureCanManageWorkspaceBoardsAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken = default);
+
     Task<BoardAccessContext> GetAccessAsync(
         Guid boardId,
         CancellationToken cancellationToken = default);
@@ -19,6 +23,10 @@ public interface IBoardAuthorizationService
         CancellationToken cancellationToken = default);
 
     Task<BoardAccessContext> EnsureCanManageBoardAsync(
+        Guid boardId,
+        CancellationToken cancellationToken = default);
+
+    Task<BoardAccessContext> EnsureCanDeleteBoardAsync(
         Guid boardId,
         CancellationToken cancellationToken = default);
 

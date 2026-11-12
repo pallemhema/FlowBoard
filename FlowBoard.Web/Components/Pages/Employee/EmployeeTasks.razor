@@ -1,5 +1,7 @@
 @page "/employee/tasks"
+
 @attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
+
 @implements IDisposable
 
 @using System.Globalization
@@ -12,212 +14,287 @@
 <PageTitle>My Tasks | FlowBoard</PageTitle>
 
 <div class="page-shell employee-tasks">
+
     <PageHeader Title="My tasks"
                 Eyebrow="Your work"
                 Description="Review tasks assigned to you and open their boards." />
 
-    <section class="task-filters" aria-label="Filter tasks">
-        <div class="task-search">
-            <SearchBox @bind-Value="search"
-                       @bind-Value:after="SearchChangedAsync"
-                       Placeholder="Search tasks, boards, or projects..." />
-        </div>
-        <div class="task-filter-field">
-            <label for="task-priority">Priority</label>
-            <select id="task-priority"
-                    class="form-select"
-                    @bind="selectedPriority"
-                    @bind:after="FiltersChangedAsync">
-                <option value="">All priorities</option>
-                @foreach (var priority in Enum.GetValues<CardPriority>())
-                {
-                    <option value="@priority">@priority</option>
-                }
-            </select>
-        </div>
-        <div class="task-filter-field">
-            <label for="due-date-from">Due from</label>
-            <input id="due-date-from"
-                   class="form-control"
-                   type="date"
-                   value="@dueDateFrom"
-                   @onchange="DueDateFromChangedAsync" />
-        </div>
-        <div class="task-filter-field">
-            <label for="due-date-to">Due through</label>
-            <input id="due-date-to"
-                   class="form-control"
-                   type="date"
-                   value="@dueDateTo"
-                   @onchange="DueDateToChangedAsync" />
-        </div>
-    </section>
+    <DataListPanel Title="My tasks"
+                   TitleId="employee-tasks-title"
+                   Description="Review your assigned tasks, sorted by due date."
+                   CountText="@(taskPage is not null && taskLoad.Error is null
+                       ? $"{taskPage.TotalCount} {(taskPage.TotalCount == 1 ? "task" : "tasks")}"
+                       : null)"
+                   CssClass="employee-tasks-panel">
 
-    @if (!string.IsNullOrWhiteSpace(filterValidationMessage))
-    {
-        <div class="task-error" role="alert">@filterValidationMessage</div>
-    }
+        <Toolbar>
+            <DataListToolBar SearchValue="@search"
+                             SearchValueChanged="HandleTaskSearchChanged"
+                             SearchPlaceholder="Search tasks, boards, or projects...">
 
-    @if (isLoading)
-    {
-        <div class="task-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-            <span>Loading your tasks...</span>
-        </div>
-    }
-    else if (!string.IsNullOrWhiteSpace(errorMessage))
-    {
-        <div class="task-error" role="alert">
-            <span>@errorMessage</span>
-            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => LoadTasksAsync(page)">
-                Try again
-            </button>
-        </div>
-    }
-    else if (taskPage is { Items.Count: 0 })
-    {
-        <EmptyState Title="@GetEmptyTitle()"
-                    Message="@GetEmptyMessage()" />
-    }
-    else if (taskPage is not null)
-    {
-        <div class="task-results-heading">
-            <p class="mb-0">@taskPage.TotalCount @(taskPage.TotalCount == 1 ? "task" : "tasks")</p>
-            <span>Sorted by due date</span>
-        </div>
+                <Filters>
+                    <div class="task-filter-field">
+                        <label for="task-priority">Priority</label>
 
-        <section class="task-list" aria-label="Tasks assigned to you">
-            @foreach (var task in taskPage.Items)
-            {
-                <article class="task-card" @key="task.CardId">
-                    <div class="task-card-main">
-                        <div class="task-card-title-row">
-                            <h2>@task.Title</h2>
-                            <span class="task-priority task-priority-@GetPriorityClass(task.Priority)">
-                                @task.Priority
-                            </span>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(task.Description))
-                        {
-                            <p class="task-description">@task.Description</p>
-                        }
-                        <div class="task-context">
-                            <span><i class="bi bi-layout-three-columns" aria-hidden="true"></i> @task.ColumnName</span>
-                            <span><i class="bi bi-kanban" aria-hidden="true"></i> @task.BoardName</span>
-                            <span><i class="bi bi-grid" aria-hidden="true"></i> @task.WorkspaceName</span>
-                            @if (!string.IsNullOrWhiteSpace(task.ProjectName))
+                        <select id="task-priority"
+                                class="form-select"
+                                @bind="selectedPriority"
+                                @bind:after="FiltersChangedAsync">
+
+                            <option value="">All priorities</option>
+
+                            @foreach (var priority in Enum.GetValues<CardPriority>())
                             {
-                                <span><i class="bi bi-folder2" aria-hidden="true"></i> @task.ProjectName</span>
+                                <option value="@priority">@priority</option>
                             }
-                        </div>
+                        </select>
                     </div>
-                    <div class="task-card-side">
-                        @if (task.DueDate.HasValue)
-                        {
-                            <div class="task-due-date">
-                                <span>Due date</span>
-                                <time datetime="@task.DueDate.Value.ToString("O")">
-                                    @task.DueDate.Value.ToLocalTime().ToString("MMM d, yyyy")
-                                </time>
-                            </div>
-                        }
-                        else
-                        {
-                            <span class="task-no-date">No due date</span>
-                        }
-                        <a class="btn btn-sm btn-outline-primary"
-                           href="@($"/workspaces/{task.WorkspaceId}/boards/{task.BoardId}")"
-                           aria-label="@($"Open board {task.BoardName}")">
-                            Open board
-                            <i class="bi bi-arrow-up-right ms-1" aria-hidden="true"></i>
-                        </a>
-                    </div>
-                </article>
-            }
-        </section>
 
-        <Pagination CurrentPage="page"
-                    TotalPages="taskPage.TotalPages"
-                    TotalCount="taskPage.TotalCount"
-                    PageChanged="LoadTasksAsync" />
-    }
+                    <div class="task-filter-field">
+                        <label for="due-date-from">Due from</label>
+
+                        <input id="due-date-from"
+                               class="form-control"
+                               type="date"
+                               value="@dueDateFrom"
+                               @onchange="DueDateFromChangedAsync" />
+                    </div>
+
+                    <div class="task-filter-field">
+                        <label for="due-date-to">Due through</label>
+
+                        <input id="due-date-to"
+                               class="form-control"
+                               type="date"
+                               value="@dueDateTo"
+                               @onchange="DueDateToChangedAsync" />
+                    </div>
+                </Filters>
+
+                <Messages>
+                    @if (!string.IsNullOrWhiteSpace(filterValidationMessage))
+                    {
+                        <div class="task-error" role="alert">
+                            @filterValidationMessage
+                        </div>
+                    }
+                </Messages>
+
+            </DataListToolBar>
+        </Toolbar>
+
+        <ChildContent>
+            @if (taskLoad.IsLoading)
+            {
+                <div class="task-loading" role="status" aria-live="polite">
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
+
+                    <span>Loading your tasks...</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(taskLoad.Error))
+            {
+                <div class="task-error" role="alert">
+                    <span>@taskLoad.Error</span>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            @onclick="() => LoadTasksAsync(page)">
+                        Try again
+                    </button>
+                </div>
+            }
+            else if (taskPage is { Items.Count: 0 })
+            {
+                <EmptyState Title="@GetEmptyTitle()"
+                            Message="@GetEmptyMessage()" />
+            }
+            else if (taskPage is not null)
+            {
+                <section class="task-list"
+                         aria-label="Tasks assigned to you">
+
+                    @foreach (var task in taskPage.Items)
+                    {
+                        <article class="task-card"
+                                 @key="task.CardId">
+
+                            <div class="task-card-main">
+
+                                <div class="task-card-title-row">
+                                    <h2>@task.Title</h2>
+
+                                    <span class="task-priority task-priority-@GetPriorityClass(task.Priority)">
+                                        @task.Priority
+                                    </span>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(task.Description))
+                                {
+                                    <p class="task-description">
+                                        @task.Description
+                                    </p>
+                                }
+
+                                <div class="task-context">
+                                    <span>
+                                        <i class="bi bi-layout-three-columns"
+                                           aria-hidden="true"></i>
+                                        @task.ColumnName
+                                    </span>
+
+                                    <span>
+                                        <i class="bi bi-kanban"
+                                           aria-hidden="true"></i>
+                                        @task.BoardName
+                                    </span>
+
+                                    <span>
+                                        <i class="bi bi-grid"
+                                           aria-hidden="true"></i>
+                                        @task.WorkspaceName
+                                    </span>
+
+                                    @if (!string.IsNullOrWhiteSpace(task.ProjectName))
+                                    {
+                                        <span>
+                                            <i class="bi bi-folder2"
+                                               aria-hidden="true"></i>
+                                            @task.ProjectName
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="task-card-side">
+                                @if (task.DueDate.HasValue)
+                                {
+                                    <div class="task-due-date">
+                                        <span>Due date</span>
+
+                                        <time datetime="@task.DueDate.Value.ToString("O")">
+                                            @task.DueDate.Value.ToLocalTime().ToString("MMM d, yyyy")
+                                        </time>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="task-no-date">
+                                        No due date
+                                    </span>
+                                }
+
+                                <a class="btn btn-sm btn-outline-primary"
+                                   href="@($"/workspaces/{task.WorkspaceId}/boards/{task.BoardId}")"
+                                   aria-label="@($"Open board {task.BoardName}")">
+
+                                    Open board
+
+                                    <i class="bi bi-arrow-up-right ms-1"
+                                       aria-hidden="true"></i>
+                                </a>
+                            </div>
+
+                        </article>
+                    }
+                </section>
+
+                <Pagination CurrentPage="page"
+                            TotalPages="taskPage.TotalPages"
+                            TotalCount="taskPage.TotalCount"
+                            PageSize="@taskPage.PageSize"
+                            PageChanged="LoadTasksAsync" />
+            }
+        </ChildContent>
+
+    </DataListPanel>
 </div>
 
 @code {
     private const int PageSize = 20;
 
+    private readonly AsyncOperationState taskLoad = new();
+    private readonly DebouncedAction searchDebounce = new();
+
     private PagedResponse<MyTaskResponse>? taskPage;
+
     private string? search;
     private string selectedPriority = string.Empty;
     private string? dueDateFrom;
     private string? dueDateTo;
+
     private string? filterValidationMessage;
-    private string? errorMessage;
-    private bool isLoading;
+
     private int page = 1;
     private long loadVersion;
+
     private CancellationTokenSource? activeLoadCts;
-    private CancellationTokenSource? searchDebounceCts;
 
-    protected override Task OnInitializedAsync() => LoadTasksAsync(1);
+    protected override Task OnInitializedAsync() =>
+        LoadTasksAsync(1);
 
-    private async Task SearchChangedAsync()
+    private Task HandleTaskSearchChanged(string? value)
     {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
-        var debounceCts = searchDebounceCts = new CancellationTokenSource();
+        search = value?.Trim();
 
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), debounceCts.Token);
-            await LoadTasksAsync(1);
-        }
-        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
-        {
-        }
+        return searchDebounce.ExecuteAsync(
+            () => LoadTasksAsync(1),
+            delayMilliseconds: 250);
     }
 
     private Task FiltersChangedAsync()
     {
-        searchDebounceCts?.Cancel();
+        searchDebounce.Cancel();
+
         return LoadTasksAsync(1);
     }
 
     private Task DueDateFromChangedAsync(ChangeEventArgs args)
     {
         dueDateFrom = args.Value?.ToString();
+
         return FiltersChangedAsync();
     }
 
     private Task DueDateToChangedAsync(ChangeEventArgs args)
     {
         dueDateTo = args.Value?.ToString();
+
         return FiltersChangedAsync();
     }
 
     private async Task LoadTasksAsync(int requestedPage)
     {
         page = requestedPage;
-        errorMessage = null;
+
+        taskLoad.Error = null;
         filterValidationMessage = null;
+
         activeLoadCts?.Cancel();
         activeLoadCts?.Dispose();
         activeLoadCts = null;
+
         var requestVersion = ++loadVersion;
 
         if (!TryCreateRequest(requestedPage, out var request))
         {
             taskPage = null;
-            isLoading = false;
+            taskLoad.IsLoading = false;
+
             return;
         }
 
         var loadCts = activeLoadCts = new CancellationTokenSource();
-        isLoading = true;
+
+        taskLoad.IsLoading = true;
 
         try
         {
-            var result = await TaskApiService.GetMyTasksAsync(request, loadCts.Token);
+            var result = await TaskApiService.GetMyTasksAsync(
+                request,
+                loadCts.Token);
+
             if (requestVersion != loadVersion)
             {
                 return;
@@ -226,7 +303,9 @@
             if (result is null)
             {
                 taskPage = null;
-                errorMessage = "Unable to load your tasks. Please try again.";
+                taskLoad.Error =
+                    "Unable to load your tasks. Please try again.";
+
                 return;
             }
 
@@ -240,7 +319,8 @@
             if (requestVersion == loadVersion)
             {
                 taskPage = null;
-                errorMessage = "The task service could not be reached.";
+                taskLoad.Error =
+                    "The task service could not be reached.";
             }
         }
         catch (JsonException)
@@ -248,37 +328,50 @@
             if (requestVersion == loadVersion)
             {
                 taskPage = null;
-                errorMessage = "The task service returned an invalid response.";
+                taskLoad.Error =
+                    "The task service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == loadVersion)
             {
-                isLoading = false;
+                taskLoad.IsLoading = false;
             }
         }
     }
 
-    private bool TryCreateRequest(int requestedPage, out MyTasksQueryRequest request)
+    private bool TryCreateRequest(
+        int requestedPage,
+        out MyTasksQueryRequest request)
     {
         request = new MyTasksQueryRequest
         {
             Page = requestedPage,
             PageSize = PageSize,
             Search = search?.Trim(),
-            Priority = Enum.TryParse<CardPriority>(selectedPriority, out var priority)
-                ? priority
-                : null,
+
+            Priority = Enum.TryParse<CardPriority>(
+                selectedPriority,
+                out var priority)
+                    ? priority
+                    : null,
+
             DueDateFrom = ParseDate(dueDateFrom),
-            DueDateTo = ParseDate(dueDateTo)?.Date.AddDays(1).AddTicks(-1)
+
+            DueDateTo = ParseDate(dueDateTo)?
+                .Date
+                .AddDays(1)
+                .AddTicks(-1)
         };
 
         if (request.DueDateFrom.HasValue &&
             request.DueDateTo.HasValue &&
             request.DueDateFrom.Value > request.DueDateTo.Value)
         {
-            filterValidationMessage = "The due-from date must be on or before the due-through date.";
+            filterValidationMessage =
+                "The due-from date must be on or before the due-through date.";
+
             return false;
         }
 
@@ -292,8 +385,8 @@
             CultureInfo.InvariantCulture,
             DateTimeStyles.None,
             out var date)
-            ? date.Date
-            : null;
+                ? date.Date
+                : null;
 
     private string GetEmptyTitle() =>
         string.IsNullOrWhiteSpace(search) &&
@@ -316,8 +409,9 @@
 
     public void Dispose()
     {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
+        searchDebounce.Cancel();
+        searchDebounce.Dispose();
+
         activeLoadCts?.Cancel();
         activeLoadCts?.Dispose();
     }

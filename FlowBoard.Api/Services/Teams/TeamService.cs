@@ -219,10 +219,16 @@ public class TeamService : ITeamService
             throw new NotFoundException("User was not found.");
         }
 
-        if (user.Role != UserRole.Employee)
+        if (user.Role == UserRole.Admin)
         {
             throw new ValidationException(
-                "Only employees can be added to a team.");
+                "Administrators cannot be added to a team.");
+        }
+
+        if (!user.IsActive)
+        {
+            throw new ValidationException(
+                "Inactive users cannot be added to a team.");
         }
 
         var alreadyMember = await _dbContext.TeamMembers

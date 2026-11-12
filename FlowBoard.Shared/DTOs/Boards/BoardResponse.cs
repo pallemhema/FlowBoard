@@ -29,4 +29,13 @@ public class BoardResponse
     public DateTime CreatedAt { get; set; }
 
     public DateTime? ModifiedAt { get; set; }
+
+    public string? OwnerName { get; set; }
+
+public string? OwnerEmail { get; set; }
+
+    public bool CanDeleteBoard { get; set; }
+    
+
+    public bool CanDeleteContent { get; set; }
 }

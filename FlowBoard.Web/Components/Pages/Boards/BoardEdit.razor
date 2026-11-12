@@ -9,17 +9,34 @@
 <div class="page-shell">
 
     <Breadcrumbs>
-        <li class="breadcrumb-item"><NavLink href="/workspaces">Workspaces</NavLink></li>
-        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}")">Workspace</NavLink></li>
-        <li class="breadcrumb-item"><NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">Board</NavLink></li>
-        <li class="breadcrumb-item active" aria-current="page">Edit</li>
+        <li class="breadcrumb-item">
+            <NavLink href="/workspaces">Workspaces</NavLink>
+        </li>
+
+        <li class="breadcrumb-item">
+            <NavLink href="@($"/workspaces/{WorkspaceId}")">
+                Workspace
+            </NavLink>
+        </li>
+
+        <li class="breadcrumb-item">
+            <NavLink href="@($"/workspaces/{WorkspaceId}/boards/{BoardId}")">
+                Board
+            </NavLink>
+        </li>
+
+        <li class="breadcrumb-item active" aria-current="page">
+            Edit
+        </li>
     </Breadcrumbs>
 
     <header class="page-header">
         <div>
             <p class="section-label mb-2">Board settings</p>
             <h1 class="page-title">Edit board</h1>
-            <p class="page-subtitle">Update the board details.</p>
+            <p class="page-subtitle">
+                Update the board details.
+            </p>
         </div>
     </header>
 
@@ -75,11 +92,8 @@
     private BoardFormModel model = new();
 
     private bool isLoading;
-
     private bool isSaving;
-
     private bool boardNotFound;
-
     private bool canManageBoard;
 
     private string? errorMessage;
@@ -91,26 +105,23 @@
         try
         {
             var board =
-                await BoardApiService.GetByIdAsync(
-                    BoardId);
+                await BoardApiService.GetByIdAsync(BoardId);
 
-            if (board is null)
-            {
-                boardNotFound = true;
-                return;
-            }
-
-            if (board.WorkspaceId != WorkspaceId)
+            if (board is null || board.WorkspaceId != WorkspaceId)
             {
                 boardNotFound = true;
                 return;
             }
 
             canManageBoard = board.CanManageBoard;
+
             model = new BoardFormModel
             {
                 Name = board.Name,
-                Description = board.Description
+                Description = board.Description,
+                WorkspaceId = board.WorkspaceId,
+                ProjectId = board.ProjectId,
+                Purpose = board.Purpose
             };
         }
         finally
@@ -139,9 +150,7 @@
 
             if (!success)
             {
-                errorMessage =
-                    "Unable to update the board.";
-
+                errorMessage = "Unable to update the board.";
                 return;
             }
 
@@ -150,7 +159,8 @@
         }
         catch
         {
-            errorMessage = "Unable to update the board. Please try again.";
+            errorMessage =
+                "Unable to update the board. Please try again.";
         }
         finally
         {

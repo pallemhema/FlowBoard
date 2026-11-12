@@ -62,124 +62,118 @@
             </EditForm>
         </section>
     }
+<DataListPanel Title="Teams"
+               TitleId="teams-list-title"
+               Description="Manage team details and employee membership."
+               CountText="@(teamList.Data is null ? null : $"{teamList.Data.TotalCount:N0} teams")"
+               CssClass="teams-panel">
 
-    <section class="teams-panel" aria-labelledby="teams-list-title">
-        <div class="teams-panel-heading">
-            <div>
-                <h2 id="teams-list-title">Teams</h2>
-                <p>Manage team details and employee membership.</p>
-            </div>
-            @if (teamPage is not null)
-            {
-                <span class="teams-total-count">@teamPage.TotalCount.ToString("N0") teams</span>
-            }
-        </div>
+    <Toolbar>
+        <DataListToolBar SearchValue="@teamSearch"
+                         SearchValueChanged="HandleTeamSearchChanged"
+                         SearchPlaceholder="Search teams by name">
+            <Actions>
+                <button type="button"
+                        class="btn btn-outline-secondary"
+                        disabled="@string.IsNullOrWhiteSpace(teamSearch)"
+                        @onclick="ClearTeamSearch">
+                    <i class="bi bi-x-circle me-1" aria-hidden="true"></i>
+                    Clear search
+                </button>
+            </Actions>
+        </DataListToolBar>
+    </Toolbar>
 
-        <div class="teams-filter-bar">
-            <div class="teams-search">
-                <SearchBox Value="@teamSearch"
-                           ValueChanged="HandleTeamSearchChanged"
-                           Placeholder="Search teams by name" />
-            </div>
-            <button type="button"
-                    class="btn btn-outline-secondary"
-                    disabled="@string.IsNullOrWhiteSpace(teamSearch)"
-                    @onclick="ClearTeamSearch">
-                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Clear search
-            </button>
-        </div>
-
-        @if (!string.IsNullOrWhiteSpace(teamListError))
+    <ChildContent>
+        @if (!string.IsNullOrWhiteSpace(teamList.Error))
         {
             <div class="team-error" role="alert">
                 <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
-                <span>@teamListError</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadTeamsAsync(currentTeamPage)">Retry</button>
+                <span>@teamList.Error</span>
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary ms-auto"
+                        @onclick="() => LoadTeamsAsync(teamList.CurrentPage)">
+                    Retry
+                </button>
             </div>
         }
-        else if (isLoadingTeams)
+        else if (teamList.IsLoading)
         {
             <div class="teams-loading" role="status" aria-live="polite">
-                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                <span class="spinner-border spinner-border-sm text-primary"
+                      aria-hidden="true"></span>
                 <span>Loading teams…</span>
             </div>
         }
-        else if (teamPage is not null && teamPage.Items.Count == 0)
+        else if (teamList.Data is not null && teamList.Data.Items.Count == 0)
         {
             <EmptyState Title="@(string.IsNullOrWhiteSpace(teamSearch) ? "No teams yet" : "No matching teams")"
                         Message="@(string.IsNullOrWhiteSpace(teamSearch) ? "Create a team to organize employees." : "Try another team name or clear the search.")">
                 @if (string.IsNullOrWhiteSpace(teamSearch))
                 {
-                    <button type="button" class="btn btn-primary" @onclick="OpenCreateForm">Create your first team</button>
+                    <button type="button"
+                            class="btn btn-primary"
+                            @onclick="OpenCreateForm">
+                        Create your first team
+                    </button>
                 }
             </EmptyState>
         }
-        else if (teamPage is not null)
+        else if (teamList.Data is not null)
         {
-            <div class="teams-table-wrap">
-                <table class="table teams-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Team</th>
-                            <th scope="col">Description</th>
-                            <th scope="col">Members</th>
-                            <th scope="col">Created</th>
-                            <th scope="col"><span class="visually-hidden">Actions</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var team in teamPage.Items)
-                        {
-                            <tr @key="team.TeamId">
-                                <td>
-                                    <div class="team-name-cell">
-                                        <span class="team-avatar" aria-hidden="true"><i class="bi bi-diagram-3"></i></span>
-                                        <strong>@team.Name</strong>
-                                    </div>
-                                </td>
-                                <td class="team-description-cell">@(string.IsNullOrWhiteSpace(team.Description) ? "—" : team.Description)</td>
-                                <td><span class="member-count-badge"><i class="bi bi-people me-1" aria-hidden="true"></i>@team.MemberCount</span></td>
-                                <td class="team-date-cell">@team.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</td>
-                                <td class="team-actions-cell">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenTeamAsync(team.TeamId)">
-                                        <i class="bi bi-eye me-1" aria-hidden="true"></i>Details
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-danger" aria-label="@($"Delete {team.Name}")" @onclick="() => RequestTeamDeletion(team)">
-                                        <i class="bi bi-trash" aria-hidden="true"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+            <DataTable TItem="TeamResponse"
+                       Items="@teamList.Data.Items"
+                       Columns="@TeamColumns"
+                       ItemKeySelector="team => team.TeamId"
+                       CssClass="table align-middle">
 
-            <div class="teams-mobile-list">
-                @foreach (var team in teamPage.Items)
-                {
-                    <article class="team-mobile-card" @key="team.TeamId">
+                <MobileTemplate Context="team">
+                    <article class="team-mobile-card">
                         <div class="team-mobile-heading">
-                            <span class="team-avatar" aria-hidden="true"><i class="bi bi-diagram-3"></i></span>
+                            <span class="team-avatar" aria-hidden="true">
+                                <i class="bi bi-diagram-3"></i>
+                            </span>
+
                             <div class="team-mobile-title">
                                 <strong>@team.Name</strong>
-                                <span>@team.MemberCount member@(team.MemberCount == 1 ? "" : "s") · @team.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                <span>
+                                    @team.MemberCount member@(team.MemberCount == 1 ? "" : "s")
+                                    · @team.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+                                </span>
                             </div>
                         </div>
-                        <p>@(string.IsNullOrWhiteSpace(team.Description) ? "No description provided." : team.Description)</p>
+
+                        <p>
+                            @(string.IsNullOrWhiteSpace(team.Description)
+                                ? "No description provided."
+                                : team.Description)
+                        </p>
+
                         <div class="team-mobile-actions">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenTeamAsync(team.TeamId)">View details</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RequestTeamDeletion(team)">Delete</button>
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-secondary"
+                                    @onclick="() => OpenTeamAsync(team.TeamId)">
+                                View details
+                            </button>
+
+                            <button type="button"
+                                    class="btn btn-sm btn-outline-danger"
+                                    @onclick="() => RequestTeamDeletion(team)">
+                                Delete
+                            </button>
                         </div>
                     </article>
-                }
-            </div>
+                </MobileTemplate>
+            </DataTable>
 
-            <Pagination CurrentPage="@teamPage.Page"
-                        TotalPages="@teamPage.TotalPages"
-                        TotalCount="@teamPage.TotalCount"
+            <Pagination CurrentPage="@teamList.Data.Page"
+                        TotalPages="@teamList.Data.TotalPages"
+                        TotalCount="@teamList.Data.TotalCount"
+                        PageSize="@teamList.Data.PageSize"
                         PageChanged="LoadTeamsAsync" />
         }
-    </section>
+    </ChildContent>
+</DataListPanel>
 
     @if (selectedTeamId.HasValue)
     {
@@ -193,7 +187,7 @@
                     <button type="button" class="btn-close" aria-label="Close team details" @onclick="CloseTeamDetails"></button>
                 </div>
 
-                @if (isLoadingTeamDetails)
+                @if (teamDetailsLoad.IsLoading)
                 {
                     <div class="teams-loading" role="status">
                         <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
@@ -258,34 +252,32 @@
                                            ValueChanged="HandleMemberSearchChanged"
                                            Placeholder="Find by name or email" />
                             </div>
-                            <p class="team-member-guidance">
-                                Only accounts identified as Employees are listed. The API remains authoritative for eligibility.
-                            </p>
-                            @if (isLoadingCandidates)
+
+                            @if (memberCandidates.IsLoading)
                             {
                                 <div class="candidate-loading" role="status">
                                     <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching directory…
                                 </div>
                             }
-                            else if (!string.IsNullOrWhiteSpace(candidateError))
+                            else if (!string.IsNullOrWhiteSpace(memberCandidates.Error))
                             {
-                                <div class="team-error compact" role="alert">@candidateError</div>
+                                <div class="team-error compact" role="alert">@memberCandidates.Error</div>
                             }
-                            else if (candidates is not null && candidates.Items.Count == 0)
+                            else if (memberCandidates.Data is not null && memberCandidates.Data.Items.Count == 0)
                             {
                                 <p class="candidate-empty">No eligible Employees match this search.</p>
                             }
-                            else if (candidates is not null)
+                            else if (memberCandidates.Data is not null)
                             {
                                 @if (!memberIdsLoaded)
                                 {
                                     <div class="team-error compact" role="alert">
-                                        <span>@(memberIdsError ?? "Membership status could not be verified. Adding employees is disabled.")</span>
+                                        <span>@(memberIdsLoad.Error ?? "Membership status could not be verified. Adding employees is disabled.")</span>
                                         <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadAllMemberIdsAsync">Retry</button>
                                     </div>
                                 }
                                 <div class="candidate-list">
-                                    @foreach (var candidate in candidates.Items)
+                                    @foreach (UserDirectoryResponse candidate in memberCandidates.Data.Items)
                                     {
                                         var alreadyMember = memberIdsLoaded && teamMemberIds.Contains(candidate.UserId);
                                         <div class="candidate-row" @key="candidate.UserId">
@@ -310,32 +302,33 @@
                                         </div>
                                     }
                                 </div>
-                                <Pagination CurrentPage="@candidatePageNumber"
-                                            TotalPages="@candidates.TotalPages"
-                                            TotalCount="@candidates.TotalCount"
+                                <Pagination CurrentPage="@memberCandidates.Data.Page"
+                                            TotalPages="@memberCandidates.Data.TotalPages"
+                                            TotalCount="@memberCandidates.Data.TotalCount"
+                                            PageSize="@memberCandidates.Data.PageSize"
                                             PageChanged="LoadCandidatesAsync" />
                             }
                         </div>
 
-                        @if (!string.IsNullOrWhiteSpace(memberError))
+                        @if (!string.IsNullOrWhiteSpace(teamDetailsLoad.Error))
                         {
-                            <div class="team-error compact" role="alert">@memberError</div>
+                            <div class="team-error compact" role="alert">@teamDetailsLoad.Error</div>
                         }
-                        else if (isLoadingMembers)
+                        else if (teamMembers.IsLoading)
                         {
                             <div class="candidate-loading" role="status">
                                 <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading members…
                             </div>
                         }
-                        else if (membersPage is not null && membersPage.Items.Count == 0)
+                        else if (teamMembers.Data is not null && teamMembers.Data.Items.Count == 0)
                         {
                             <EmptyState Title="No team members"
                                         Message="Search the directory above to add Employee accounts to this team." />
                         }
-                        else if (membersPage is not null)
+                        else if (teamMembers.Data is not null)
                         {
                             <div class="members-list">
-                                @foreach (var member in membersPage.Items)
+                                @foreach (var member in teamMembers.Data.Items)
                                 {
                                     <div class="member-row" @key="member.UserId">
                                         <UserAvatar FirstName="@member.User.FirstName" LastName="@member.User.LastName" />
@@ -363,9 +356,10 @@
                                     </div>
                                 }
                             </div>
-                            <Pagination CurrentPage="@membersPage.Page"
-                                        TotalPages="@membersPage.TotalPages"
-                                        TotalCount="@membersPage.TotalCount"
+                            <Pagination CurrentPage="@teamMembers.Data.Page"
+                                        TotalPages="@teamMembers.Data.TotalPages"
+                                        TotalCount="@teamMembers.Data.TotalCount"
+                                        PageSize="@teamMembers.Data.PageSize"
                                         PageChanged="LoadMembersAsync" />
                         }
                     </section>
@@ -386,52 +380,152 @@
 </div>
 
 @code {
-    private const int TeamPageSize = 10;
-    private const int MemberPageSize = 10;
-    private const int CandidatePageSize = 8;
-    private const int DirectoryFetchPageSize = 100;
+    // Page sizes
+    private const int TeamPageSize = PageSizeDefaults.Default;
+    private const int MemberPageSize = PageSizeDefaults.Default;
+    private const int CandidatePageSize = PageSizeDefaults.Default;
+    private const int DirectoryFetchPageSize = PageSizeDefaults.Resource;
 
     [SupplyParameterFromQuery(Name = "teamId")]
     public Guid? TeamId { get; set; }
 
-    private PagedResponse<TeamResponse>? teamPage;
+
+    // Team list state
+    private PagedListState<TeamResponse> teamList = new()
+    {
+        PageSize = TeamPageSize,
+        IsLoading = true
+    };
+
+    // Selected team
     private TeamResponse? selectedTeam;
-    private PagedResponse<TeamMemberResponse>? membersPage;
-    private PagedResponse<UserDirectoryResponse>? candidates;
+    private TeamResponse? teamPendingDeletion;
+
+    // Team members state
+    private PagedListState<TeamMemberResponse> teamMembers = new()
+    {
+        PageSize = MemberPageSize
+    };
+
+    // Member candidates state
+    private PagedListState<UserDirectoryResponse> memberCandidates = new()
+    {
+        PageSize = CandidatePageSize
+    };
+
+    // Complete membership verification
     private readonly HashSet<Guid> teamMemberIds = [];
-    private readonly List<UserDirectoryResponse> employeeCandidates = [];
+    private bool memberIdsLoaded;
+
+    // Candidate cache
+    private readonly List<UserDirectoryResponse> eligibleCandidates = [];
+    private string? loadedCandidateSearch;
+    private bool employeeCandidateCacheLoaded;
+
+    // Forms
     private CreateTeamRequest createRequest = new();
     private UpdateTeamRequest updateRequest = new();
-    private TeamResponse? teamPendingDeletion;
+
+    // Async operations
+    private AsyncOperationState createTeamOperation = new();
+    private AsyncOperationState teamDetailsLoad = new();
+    private AsyncOperationState memberIdsLoad = new();
+    private AsyncOperationState memberOperation = new();
+    private AsyncOperationState teamUpdateOperation = new();
+    private AsyncOperationState deleteTeamOperation = new();
+
+    // Search
     private string? teamSearch;
     private string? memberSearch;
-    private string? teamListError;
-    private string? candidateError;
-    private string? memberError;
-    private string? memberIdsError;
-    private bool isLoadingTeams = true;
-    private bool isLoadingTeamDetails;
-    private bool isLoadingMembers;
-    private bool isLoadingCandidates;
-    private bool memberIdsLoaded;
-    private bool isSubmitting;
+
+    // UI state
     private bool isEditingTeam;
     private bool showCreateForm;
-    private int currentTeamPage = 1;
-    private int memberPageNumber = 1;
-    private int candidatePageNumber = 1;
     private Guid? removeMemberId;
-    private CancellationTokenSource? activeTeamRequest;
-    private CancellationTokenSource? teamSearchDebounce;
-    private CancellationTokenSource? memberSearchDebounce;
+
+    // Request versioning
     private long teamRequestVersion;
     private long memberRequestVersion;
     private long candidateRequestVersion;
     private long memberIdsRequestVersion;
-    private string? loadedCandidateSearch;
-    private bool employeeCandidateCacheLoaded;
+
+    // Cancellation and debounce
+    private CancellationTokenSource? activeTeamRequest;
+    private readonly DebouncedAction teamSearchDebounce = new();
+
+    private readonly DebouncedAction memberSearchDebounce = new();
+
+
+    // Route and lifecycle
     private Guid? loadedDetailTeamId;
     private bool disposed;
+
+    // Combined submission state
+    private bool isSubmitting =>
+        createTeamOperation.IsSubmitting ||
+        memberOperation.IsSubmitting ||
+        teamUpdateOperation.IsSubmitting ||
+        deleteTeamOperation.IsSubmitting;
+
+
+
+
+    private IReadOnlyList<DataTableColumn<TeamResponse>> TeamColumns =>
+    [
+        new()
+        {
+            Header = "Team",
+            Template = team => @<div class="team-name-cell">
+                <span class="team-avatar" aria-hidden="true">
+                    <i class="bi bi-diagram-3"></i>
+                </span>
+                <strong>@team.Name</strong>
+            </div>
+        },
+        new()
+        {
+            Header = "Description",
+            Template = team => @<span class="team-description-cell">
+                @(string.IsNullOrWhiteSpace(team.Description)
+                    ? "—"
+                    : team.Description)
+            </span>
+        },
+        new()
+        {
+            Header = "Members",
+            Template = team => @<span class="member-count-badge">
+                <i class="bi bi-people me-1" aria-hidden="true"></i>
+                @team.MemberCount
+            </span>
+        },
+        new()
+        {
+            Header = "Created",
+            Template = team => @<span class="team-date-cell">
+                @team.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+            </span>
+        },
+        new()
+        {
+            Header = "Actions",
+            Template = team => @<div class="team-actions-cell">
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        @onclick="() => OpenTeamAsync(team.TeamId)">
+                    <i class="bi bi-eye me-1" aria-hidden="true"></i>
+                    Details
+                </button>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        aria-label="@($"Delete {team.Name}")"
+                        @onclick="() => RequestTeamDeletion(team)">
+                    <i class="bi bi-trash" aria-hidden="true"></i>
+                </button>
+            </div>
+        }
+    ];
 
     protected override async Task OnInitializedAsync()
     {
@@ -478,38 +572,49 @@
 
     private async Task CreateTeamAsync()
     {
-        if (isSubmitting)
+        if (createTeamOperation.IsSubmitting)
         {
             return;
         }
 
-        isSubmitting = true;
+        createTeamOperation.IsSubmitting = true;
+        createTeamOperation.Error = null;
+
         try
         {
             var created = await TeamApiService.CreateAsync(createRequest);
+
             if (created is null)
             {
                 return;
             }
 
             ToastService.Success($"Team “{created.Name}” created.");
+
             showCreateForm = false;
             createRequest = new CreateTeamRequest();
             teamSearch = null;
+
             await LoadTeamsAsync(1);
             await NavigateToTeamAsync(created.TeamId);
         }
         catch (HttpRequestException)
         {
-            ToastService.Error("The team service could not be reached. Try again.");
+            createTeamOperation.Error =
+                "The team service could not be reached. Try again.";
+
+            ToastService.Error(createTeamOperation.Error);
         }
         catch (JsonException)
         {
-            ToastService.Error("The team service returned an invalid response.");
+            createTeamOperation.Error =
+                "The team service returned an invalid response.";
+
+            ToastService.Error(createTeamOperation.Error);
         }
         finally
         {
-            isSubmitting = false;
+            createTeamOperation.IsSubmitting = false;
         }
     }
 
@@ -517,13 +622,15 @@
     {
         activeTeamRequest?.Cancel();
         activeTeamRequest?.Dispose();
+
         activeTeamRequest = new CancellationTokenSource();
+
         var cancellationToken = activeTeamRequest.Token;
         var version = ++teamRequestVersion;
 
-        currentTeamPage = page;
-        isLoadingTeams = true;
-        teamListError = null;
+        teamList.CurrentPage = page;
+        teamList.IsLoading = true;
+        teamList.Error = null;
 
         try
         {
@@ -532,72 +639,67 @@
                 {
                     Page = page,
                     PageSize = TeamPageSize,
-                    Search = string.IsNullOrWhiteSpace(teamSearch) ? null : teamSearch
+                    Search = string.IsNullOrWhiteSpace(teamSearch)
+                        ? null
+                        : teamSearch
                 },
                 cancellationToken);
 
-            if (version != teamRequestVersion || cancellationToken.IsCancellationRequested)
+            if (version != teamRequestVersion ||
+                cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
             if (response is null)
             {
-                teamPage = null;
-                teamListError = "Teams could not be loaded. The request may have been rejected or the service may be unavailable.";
+                teamList.Data = null;
+                teamList.Error =
+                    "Teams could not be loaded. The request may have been rejected or the service may be unavailable.";
                 return;
             }
 
-            teamPage = response;
+            teamList.Data = response;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
+            // A newer request replaced this one.
         }
         catch (HttpRequestException)
         {
             if (version == teamRequestVersion)
             {
-                teamPage = null;
-                teamListError = "The team service could not be reached. Check your connection and retry.";
+                teamList.Data = null;
+                teamList.Error =
+                    "The team service could not be reached. Check your connection and retry.";
             }
         }
         catch (JsonException)
         {
             if (version == teamRequestVersion)
             {
-                teamPage = null;
-                teamListError = "The team service returned an invalid response.";
+                teamList.Data = null;
+                teamList.Error =
+                    "The team service returned an invalid response.";
             }
         }
         finally
         {
             if (version == teamRequestVersion && !disposed)
             {
-                isLoadingTeams = false;
+                teamList.IsLoading = false;
             }
         }
     }
-
-    private async Task HandleTeamSearchChanged(string? value)
+   private Task HandleTeamSearchChanged(string? value)
     {
         teamSearch = value?.Trim();
-        teamSearchDebounce?.Cancel();
-        teamSearchDebounce?.Dispose();
-        teamSearchDebounce = new CancellationTokenSource();
-        var token = teamSearchDebounce.Token;
 
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            if (!token.IsCancellationRequested)
-            {
-                await LoadTeamsAsync(1);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
+        return teamSearchDebounce.ExecuteAsync(
+            () => LoadTeamsAsync(1));
     }
+
 
     private async Task ClearTeamSearch()
     {
@@ -624,25 +726,37 @@
 
     private async Task LoadTeamDetailsAsync(Guid teamId)
     {
-        isLoadingTeamDetails = true;
+        // Invalidate requests belonging to the previously selected team.
+        ++memberRequestVersion;
+        ++candidateRequestVersion;
+        ++memberIdsRequestVersion;
+
+        teamDetailsLoad.IsLoading = true;
+        teamDetailsLoad.Error = null;
+
         selectedTeam = null;
-        membersPage = null;
-        candidates = null;
+
+        teamMembers.Data = null;
+        memberCandidates.Data = null;
+
         teamMemberIds.Clear();
         memberIdsLoaded = false;
-        memberIdsError = null;
-        employeeCandidates.Clear();
+        memberIdsLoad.Error = null;
+
+        eligibleCandidates.Clear();
+        loadedCandidateSearch = null;
         employeeCandidateCacheLoaded = false;
-        memberPageNumber = 1;
-        candidatePageNumber = 1;
-        memberError = null;
-        candidateError = null;
+
+        teamMembers.CurrentPage = 1;
+        memberCandidates.CurrentPage = 1;
 
         try
         {
             selectedTeam = await TeamApiService.GetByIdAsync(teamId);
+
             if (selectedTeam is null)
             {
+                teamDetailsLoad.Error = "Team details could not be loaded.";
                 ToastService.Error("Team details could not be loaded.");
                 return;
             }
@@ -653,18 +767,22 @@
         }
         catch (HttpRequestException)
         {
-            memberError = "The team service could not be reached.";
+            teamDetailsLoad.Error =
+                "The team service could not be reached.";
         }
         catch (JsonException)
         {
-            memberError = "The team service returned an invalid response.";
+            teamDetailsLoad.Error =
+                "The team service returned an invalid response.";
         }
         finally
         {
-            isLoadingTeamDetails = false;
+            if (!disposed)
+            {
+                teamDetailsLoad.IsLoading = false;
+            }
         }
     }
-
     private void CloseTeamDetails()
     {
         Navigation.NavigateTo("/admin/teams");
@@ -675,305 +793,363 @@
     private void ResetTeamDetails()
     {
         selectedTeam = null;
-        membersPage = null;
-        candidates = null;
+        teamMembers.Data = null;
+        memberCandidates.Data = null;
         teamMemberIds.Clear();
         memberIdsLoaded = false;
         memberIdsRequestVersion++;
-        employeeCandidates.Clear();
+        eligibleCandidates.Clear();
         employeeCandidateCacheLoaded = false;
         isEditingTeam = false;
-        isLoadingTeamDetails = false;
+        teamDetailsLoad.IsLoading = false;
     }
 
     private async Task LoadMembersAsync(int page)
     {
-        if (!TeamId.HasValue)
+        var teamId = selectedTeam?.TeamId ?? TeamId;
+
+        if (!teamId.HasValue)
         {
             return;
         }
 
+        var requestedTeamId = teamId.Value;
         var version = ++memberRequestVersion;
-        memberPageNumber = page;
-        isLoadingMembers = true;
-        memberError = null;
+
+        teamMembers.CurrentPage = page;
+        teamMembers.IsLoading = true;
+        teamMembers.Error = null;
+
         try
         {
             var response = await TeamApiService.GetMembersAsync(
-                TeamId.Value,
-                new PagedSearchRequest { Page = page, PageSize = MemberPageSize });
+                requestedTeamId,
+                new PagedSearchRequest
+                {
+                    Page = page,
+                    PageSize = MemberPageSize
+                });
 
-            if (version != memberRequestVersion)
+            if (version != memberRequestVersion ||
+                requestedTeamId != (selectedTeam?.TeamId ?? TeamId))
             {
                 return;
             }
 
             if (response is null)
             {
-                membersPage = null;
-                memberError = "Team members could not be loaded. Check your access and retry.";
+                teamMembers.Data = null;
+                teamMembers.Error =
+                    "Team members could not be loaded. Check your access and retry.";
                 return;
             }
 
-            membersPage = response;
+            teamMembers.Data = response;
         }
         catch (HttpRequestException)
         {
             if (version == memberRequestVersion)
             {
-                memberError = "The team member service could not be reached.";
+                teamMembers.Error =
+                    "The team member service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (version == memberRequestVersion)
             {
-                memberError = "The team member service returned an invalid response.";
+                teamMembers.Error =
+                    "The team member service returned an invalid response.";
             }
         }
         finally
         {
-            if (version == memberRequestVersion)
+            if (version == memberRequestVersion && !disposed)
             {
-                isLoadingMembers = false;
+                teamMembers.IsLoading = false;
             }
         }
     }
+    private Task HandleMemberSearchChanged(string? value)
+        {
+            memberSearch = value?.Trim();
 
-    private async Task HandleMemberSearchChanged(string? value)
+            return memberSearchDebounce.ExecuteAsync(
+                () => LoadCandidatesAsync(1));
+        }
+
+   
+   private async Task LoadCandidatesAsync(int page)
+{
+    var teamId = selectedTeam?.TeamId ?? TeamId;
+
+    if (!teamId.HasValue)
     {
-        memberSearch = value?.Trim();
-        memberSearchDebounce?.Cancel();
-        memberSearchDebounce?.Dispose();
-        memberSearchDebounce = new CancellationTokenSource();
-        var token = memberSearchDebounce.Token;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            if (!token.IsCancellationRequested)
-            {
-                await LoadCandidatesAsync(1);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
+        return;
     }
 
-    private async Task LoadCandidatesAsync(int page)
+    var requestedTeamId = teamId.Value;
+    var version = ++candidateRequestVersion;
+
+    memberCandidates.CurrentPage = page;
+    memberCandidates.IsLoading = true;
+    memberCandidates.Error = null;
+
+    try
     {
-        if (!TeamId.HasValue)
-        {
-            return;
-        }
+        var search = string.IsNullOrWhiteSpace(memberSearch)
+            ? null
+            : memberSearch.Trim();
 
-        var version = ++candidateRequestVersion;
-        candidatePageNumber = page;
-        isLoadingCandidates = true;
-        candidateError = null;
-        try
+        if (!employeeCandidateCacheLoaded ||
+            !string.Equals(
+                loadedCandidateSearch,
+                search,
+                StringComparison.Ordinal))
         {
-            var search = string.IsNullOrWhiteSpace(memberSearch)
-                ? null
-                : memberSearch.Trim();
-            if (!employeeCandidateCacheLoaded ||
-                !string.Equals(loadedCandidateSearch, search, StringComparison.Ordinal))
-            {
-                var firstPage = await UserDirectoryApiService.GetAsync(
-                    new PagedSearchRequest
-                    {
-                        Page = 1,
-                        PageSize = DirectoryFetchPageSize,
-                        Search = search
-                    });
-
-                if (version != candidateRequestVersion)
+            var firstPage = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
                 {
-                    return;
-                }
+                    Page = 1,
+                    PageSize = DirectoryFetchPageSize,
+                    Search = search
+                });
 
-                if (firstPage is null)
-                {
-                    candidates = null;
-                    employeeCandidateCacheLoaded = false;
-                    candidateError = "The account directory could not be loaded. Check your Admin access and retry.";
-                    return;
-                }
-
-                var directoryUsers = firstPage.Items.ToList();
-                for (var directoryPage = 2;
-                     directoryPage <= firstPage.TotalPages;
-                     directoryPage++)
-                {
-                    var response = await UserDirectoryApiService.GetAsync(
-                        new PagedSearchRequest
-                        {
-                            Page = directoryPage,
-                            PageSize = DirectoryFetchPageSize,
-                            Search = search
-                        });
-
-                    if (version != candidateRequestVersion)
-                    {
-                        return;
-                    }
-
-                    if (response is null)
-                    {
-                        candidates = null;
-                        employeeCandidateCacheLoaded = false;
-                        candidateError = "The complete account directory could not be loaded. No candidates are shown until all roles can be verified.";
-                        return;
-                    }
-
-                    directoryUsers.AddRange(response.Items);
-                }
-
-                if (directoryUsers.Count != firstPage.TotalCount)
-                {
-                    candidates = null;
-                    employeeCandidateCacheLoaded = false;
-                    candidateError = "The account directory returned incomplete results. No candidates are shown until eligibility can be verified.";
-                    return;
-                }
-
-                employeeCandidates.Clear();
-                employeeCandidates.AddRange(directoryUsers
-                    .Where(user => string.Equals(
-                        user.Role,
-                        "Employee",
-                        StringComparison.Ordinal))
-                    .OrderBy(user => user.FirstName)
-                    .ThenBy(user => user.LastName)
-                    .ThenBy(user => user.Email));
-                loadedCandidateSearch = search;
-                employeeCandidateCacheLoaded = true;
-            }
-
-            var totalPages = Math.Max(
-                1,
-                (int)Math.Ceiling(employeeCandidates.Count / (double)CandidatePageSize));
-            candidatePageNumber = Math.Clamp(page, 1, totalPages);
-            candidates = new PagedResponse<UserDirectoryResponse>
-            {
-                Items = employeeCandidates
-                    .Skip((candidatePageNumber - 1) * CandidatePageSize)
-                    .Take(CandidatePageSize)
-                    .ToArray(),
-                Page = candidatePageNumber,
-                PageSize = CandidatePageSize,
-                TotalCount = employeeCandidates.Count,
-                TotalPages = totalPages
-            };
-        }
-        catch (HttpRequestException)
-        {
-            if (version == candidateRequestVersion)
-            {
-                candidateError = "The account directory could not be reached.";
-            }
-        }
-        catch (JsonException)
-        {
-            if (version == candidateRequestVersion)
-            {
-                candidateError = "The account directory returned an invalid response.";
-            }
-        }
-        finally
-        {
-            if (version == candidateRequestVersion)
-            {
-                isLoadingCandidates = false;
-            }
-        }
-    }
-
-    private async Task LoadAllMemberIdsAsync()
-    {
-        if (!TeamId.HasValue)
-        {
-            return;
-        }
-
-        var version = ++memberIdsRequestVersion;
-        var teamId = TeamId.Value;
-        memberIdsLoaded = false;
-        memberIdsError = null;
-        try
-        {
-            var firstPage = await TeamApiService.GetMembersAsync(
-                teamId,
-                new PagedSearchRequest { Page = 1, PageSize = 100 });
-            if (version != memberIdsRequestVersion)
+            if (version != candidateRequestVersion ||
+                requestedTeamId != (selectedTeam?.TeamId ?? TeamId))
             {
                 return;
             }
 
             if (firstPage is null)
             {
-                memberIdsError = "The complete team membership list could not be loaded.";
+                memberCandidates.Data = null;
+                employeeCandidateCacheLoaded = false;
+                memberCandidates.Error =
+                    "The account directory could not be loaded. Check your Admin access and retry.";
                 return;
             }
 
-            var userIds = firstPage.Items
-                .Select(member => member.UserId)
-                .ToHashSet();
-            for (var page = 2; page <= firstPage.TotalPages; page++)
+            var directoryUsers = firstPage.Items.ToList();
+
+            for (var directoryPage = 2;
+                 directoryPage <= firstPage.TotalPages;
+                 directoryPage++)
             {
-                var response = await TeamApiService.GetMembersAsync(
-                    teamId,
-                    new PagedSearchRequest { Page = page, PageSize = 100 });
-                if (version != memberIdsRequestVersion)
+                var response = await UserDirectoryApiService.GetAsync(
+                    new PagedSearchRequest
+                    {
+                        Page = directoryPage,
+                        PageSize = DirectoryFetchPageSize,
+                        Search = search
+                    });
+
+                if (version != candidateRequestVersion ||
+                    requestedTeamId != (selectedTeam?.TeamId ?? TeamId))
                 {
                     return;
                 }
 
                 if (response is null)
                 {
-                    memberIdsError = "The complete team membership list could not be loaded.";
+                    memberCandidates.Data = null;
+                    employeeCandidateCacheLoaded = false;
+                    memberCandidates.Error =
+                        "The complete account directory could not be loaded. No candidates are shown until all roles can be verified.";
                     return;
                 }
 
-                userIds.UnionWith(response.Items.Select(member => member.UserId));
+                directoryUsers.AddRange(response.Items);
+            }
+
+            if (directoryUsers.Count != firstPage.TotalCount)
+            {
+                memberCandidates.Data = null;
+                employeeCandidateCacheLoaded = false;
+                memberCandidates.Error =
+                    "The account directory returned incomplete results. No candidates are shown until eligibility can be verified.";
+                return;
+            }
+
+            eligibleCandidates.Clear();
+
+            eligibleCandidates.AddRange(directoryUsers
+                .Where(user =>
+                    user.Role == "Employee" ||
+                    user.Role == "Manager")
+                .OrderBy(user => user.FirstName)
+                .ThenBy(user => user.LastName)
+                .ThenBy(user => user.Email));
+
+            loadedCandidateSearch = search;
+            employeeCandidateCacheLoaded = true;
+        }
+
+        var totalPages = Math.Max(
+            1,
+            (int)Math.Ceiling(
+                eligibleCandidates.Count / (double)CandidatePageSize));
+
+        var currentPage = Math.Clamp(page, 1, totalPages);
+
+        memberCandidates.CurrentPage = currentPage;
+
+        memberCandidates.Data = new PagedResponse<UserDirectoryResponse>
+        {
+            Items = eligibleCandidates
+                .Skip((currentPage - 1) * CandidatePageSize)
+                .Take(CandidatePageSize)
+                .ToArray(),
+            Page = currentPage,
+            PageSize = CandidatePageSize,
+            TotalCount = eligibleCandidates.Count,
+            TotalPages = totalPages
+        };
+    }
+    catch (HttpRequestException)
+    {
+        if (version == candidateRequestVersion)
+        {
+            memberCandidates.Error =
+                "The account directory could not be reached.";
+        }
+    }
+    catch (JsonException)
+    {
+        if (version == candidateRequestVersion)
+        {
+            memberCandidates.Error =
+                "The account directory returned an invalid response.";
+        }
+    }
+    finally
+    {
+        if (version == candidateRequestVersion && !disposed)
+        {
+            memberCandidates.IsLoading = false;
+        }
+    }
+}
+
+    private async Task LoadAllMemberIdsAsync()
+    {
+        var teamId = selectedTeam?.TeamId ?? TeamId;
+
+        if (!teamId.HasValue)
+        {
+            return;
+        }
+
+        var requestedTeamId = teamId.Value;
+        var version = ++memberIdsRequestVersion;
+
+        memberIdsLoaded = false;
+        memberIdsLoad.IsLoading = true;
+        memberIdsLoad.Error = null;
+
+        try
+        {
+            var firstPage = await TeamApiService.GetMembersAsync(
+                requestedTeamId,
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = DirectoryFetchPageSize
+                });
+
+            if (version != memberIdsRequestVersion ||
+                requestedTeamId != (selectedTeam?.TeamId ?? TeamId))
+            {
+                return;
+            }
+
+            if (firstPage is null)
+            {
+                memberIdsLoad.Error =
+                    "The complete team membership list could not be loaded.";
+                return;
+            }
+
+            var userIds = firstPage.Items
+                .Select(member => member.UserId)
+                .ToHashSet();
+
+            for (var page = 2; page <= firstPage.TotalPages; page++)
+            {
+                var response = await TeamApiService.GetMembersAsync(
+                    requestedTeamId,
+                    new PagedSearchRequest
+                    {
+                        Page = page,
+                        PageSize = DirectoryFetchPageSize
+                    });
+
+                if (version != memberIdsRequestVersion ||
+                    requestedTeamId != (selectedTeam?.TeamId ?? TeamId))
+                {
+                    return;
+                }
+
+                if (response is null)
+                {
+                    memberIdsLoad.Error =
+                        "The complete team membership list could not be loaded.";
+                    return;
+                }
+
+                userIds.UnionWith(
+                    response.Items.Select(member => member.UserId));
             }
 
             if (userIds.Count != firstPage.TotalCount)
             {
-                memberIdsError = "The team membership list returned incomplete results.";
+                memberIdsLoad.Error =
+                    "The team membership list returned incomplete results.";
                 return;
             }
 
             teamMemberIds.Clear();
             teamMemberIds.UnionWith(userIds);
+
             memberIdsLoaded = true;
         }
         catch (HttpRequestException)
         {
             if (version == memberIdsRequestVersion)
             {
-                memberIdsError = "The team membership service could not be reached.";
+                memberIdsLoad.Error =
+                    "The team membership service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (version == memberIdsRequestVersion)
             {
-                memberIdsError = "The team membership service returned an invalid response.";
+                memberIdsLoad.Error =
+                    "The team membership service returned an invalid response.";
+            }
+        }
+        finally
+        {
+            if (version == memberIdsRequestVersion && !disposed)
+            {
+                memberIdsLoad.IsLoading = false;
             }
         }
     }
-
     private async Task AddMemberAsync(UserDirectoryResponse candidate)
     {
-        if (!TeamId.HasValue || isSubmitting)
+        var teamId = selectedTeam?.TeamId ?? TeamId;
+
+        if (!teamId.HasValue || memberOperation.IsSubmitting)
         {
             return;
         }
 
         if (!memberIdsLoaded)
         {
-            ToastService.Warning("Team membership could not be verified. Retry before adding an employee.");
+            ToastService.Warning(
+                "Team membership could not be verified. Retry before adding an employee.");
             return;
         }
 
@@ -983,32 +1159,43 @@
             return;
         }
 
-        isSubmitting = true;
+        memberOperation.IsSubmitting = true;
+        memberOperation.Error = null;
+
         try
         {
             var added = await TeamApiService.AddMemberAsync(
-                TeamId.Value,
-                new AddTeamMemberRequest { UserId = candidate.UserId });
+                teamId.Value,
+                new AddTeamMemberRequest
+                {
+                    UserId = candidate.UserId
+                });
 
             if (added is null)
             {
                 return;
             }
 
-            ToastService.Success($"{GetFullName(candidate.FirstName, candidate.LastName)} added to the team.");
+            ToastService.Success(
+                $"{GetFullName(candidate.FirstName, candidate.LastName)} added to the team.");
+
             await RefreshTeamAfterMembershipChangeAsync();
         }
         catch (HttpRequestException)
         {
-            ToastService.Error("The team service could not be reached. Try again.");
+            memberOperation.Error =
+                "The team service could not be reached. Try again.";
+            ToastService.Error(memberOperation.Error);
         }
         catch (JsonException)
         {
-            ToastService.Error("The team service returned an invalid response.");
+            memberOperation.Error =
+                "The team service returned an invalid response.";
+            ToastService.Error(memberOperation.Error);
         }
         finally
         {
-            isSubmitting = false;
+            memberOperation.IsSubmitting = false;
         }
     }
 
@@ -1024,16 +1211,20 @@
 
     private async Task RemoveMemberAsync(TeamMemberResponse member)
     {
-        if (!TeamId.HasValue || isSubmitting)
+        var teamId = selectedTeam?.TeamId ?? TeamId;
+
+        if (!teamId.HasValue || memberOperation.IsSubmitting)
         {
             return;
         }
 
-        isSubmitting = true;
+        memberOperation.IsSubmitting = true;
+        memberOperation.Error = null;
+
         try
         {
             var removed = await TeamApiService.RemoveMemberAsync(
-                TeamId.Value,
+                teamId.Value,
                 member.UserId);
 
             if (!removed)
@@ -1041,31 +1232,63 @@
                 return;
             }
 
-            ToastService.Success($"{GetFullName(member.User.FirstName, member.User.LastName)} removed from the team.");
+            ToastService.Success(
+                $"{GetFullName(member.User.FirstName, member.User.LastName)} removed from the team.");
+
             removeMemberId = null;
+
             await RefreshTeamAfterMembershipChangeAsync();
         }
         catch (HttpRequestException)
         {
-            ToastService.Error("The team service could not be reached. Try again.");
+            memberOperation.Error =
+                "The team service could not be reached. Try again.";
+            ToastService.Error(memberOperation.Error);
+        }
+        catch (JsonException)
+        {
+            memberOperation.Error =
+                "The team service returned an invalid response.";
+            ToastService.Error(memberOperation.Error);
         }
         finally
         {
-            isSubmitting = false;
+            memberOperation.IsSubmitting = false;
         }
     }
 
     private async Task RefreshTeamAfterMembershipChangeAsync()
     {
-        if (!TeamId.HasValue)
+        var teamId = selectedTeam?.TeamId ?? TeamId;
+
+        if (!teamId.HasValue)
         {
             return;
         }
 
-        await LoadMembersAsync(memberPageNumber);
+        var requestedTeamId = teamId.Value;
+
+        // If the last member on a page was removed, move to the previous page.
+        var currentPage = teamMembers.CurrentPage;
+
+        var page = teamMembers.Data?.Items.Count == 1 && currentPage > 1
+            ? currentPage - 1
+            : currentPage;
+
+        await LoadMembersAsync(page);
         await LoadAllMemberIdsAsync();
-        selectedTeam = await TeamApiService.GetByIdAsync(TeamId.Value);
-        await LoadTeamsAsync(currentTeamPage);
+
+        // Refresh the selected team's member count and other details.
+        var refreshedTeam = await TeamApiService.GetByIdAsync(requestedTeamId);
+
+        if (refreshedTeam is not null &&
+            requestedTeamId == (selectedTeam?.TeamId ?? TeamId))
+        {
+            selectedTeam = refreshedTeam;
+        }
+
+        // Refresh the main team list.
+        await LoadTeamsAsync(teamList.CurrentPage);
     }
 
     private void BeginTeamEdit()
@@ -1095,15 +1318,22 @@
 
     private async Task UpdateTeamAsync()
     {
-        if (!TeamId.HasValue || isSubmitting)
+        var teamId = selectedTeam?.TeamId ?? TeamId;
+
+        if (!teamId.HasValue || teamUpdateOperation.IsSubmitting)
         {
             return;
         }
 
-        isSubmitting = true;
+        teamUpdateOperation.IsSubmitting = true;
+        teamUpdateOperation.Error = null;
+
         try
         {
-            var updated = await TeamApiService.UpdateAsync(TeamId.Value, updateRequest);
+            var updated = await TeamApiService.UpdateAsync(
+                teamId.Value,
+                updateRequest);
+
             if (updated is null)
             {
                 return;
@@ -1111,20 +1341,28 @@
 
             selectedTeam = updated;
             isEditingTeam = false;
+
             ToastService.Success("Team details updated.");
-            await LoadTeamsAsync(currentTeamPage);
+
+            await LoadTeamsAsync(teamList.CurrentPage);
         }
         catch (HttpRequestException)
         {
-            ToastService.Error("The team service could not be reached. Try again.");
+            teamUpdateOperation.Error =
+                "The team service could not be reached. Try again.";
+
+            ToastService.Error(teamUpdateOperation.Error);
         }
         catch (JsonException)
         {
-            ToastService.Error("The team service returned an invalid response.");
+            teamUpdateOperation.Error =
+                "The team service returned an invalid response.";
+
+            ToastService.Error(teamUpdateOperation.Error);
         }
         finally
         {
-            isSubmitting = false;
+            teamUpdateOperation.IsSubmitting = false;
         }
     }
 
@@ -1143,44 +1381,62 @@
 
     private async Task DeleteTeamAsync()
     {
-        if (teamPendingDeletion is null || isSubmitting)
+        if (teamPendingDeletion is null ||
+            deleteTeamOperation.IsSubmitting)
         {
             return;
         }
 
         var team = teamPendingDeletion;
-        isSubmitting = true;
+
+        deleteTeamOperation.IsSubmitting = true;
+        deleteTeamOperation.Error = null;
+
         try
         {
             var deleted = await TeamApiService.DeleteAsync(team.TeamId);
+
             if (!deleted)
             {
                 return;
             }
 
             teamPendingDeletion = null;
+
             ToastService.Success($"Team “{team.Name}” deleted.");
+
             if (selectedTeamId == team.TeamId)
             {
                 CloseTeamDetails();
             }
 
-            var targetPage = teamPage?.Items.Count == 1 && currentTeamPage > 1
-                ? currentTeamPage - 1
-                : currentTeamPage;
+            // Move back one page if the deleted team was the only item.
+            var currentPage = teamList.CurrentPage;
+
+            var targetPage =
+                teamList.Data?.Items.Count == 1 && currentPage > 1
+                    ? currentPage - 1
+                    : currentPage;
+
             await LoadTeamsAsync(targetPage);
         }
         catch (HttpRequestException)
         {
-            ToastService.Error("The team service could not be reached. The team was not deleted.");
+            deleteTeamOperation.Error =
+                "The team service could not be reached. The team was not deleted.";
+
+            ToastService.Error(deleteTeamOperation.Error);
         }
         catch (JsonException)
         {
-            ToastService.Error("The team service returned an invalid response. The team may not have been deleted.");
+            deleteTeamOperation.Error =
+                "The team service returned an invalid response. The team may not have been deleted.";
+
+            ToastService.Error(deleteTeamOperation.Error);
         }
         finally
         {
-            isSubmitting = false;
+            deleteTeamOperation.IsSubmitting = false;
         }
     }
 
@@ -1197,9 +1453,7 @@
         disposed = true;
         activeTeamRequest?.Cancel();
         activeTeamRequest?.Dispose();
-        teamSearchDebounce?.Cancel();
         teamSearchDebounce?.Dispose();
-        memberSearchDebounce?.Cancel();
         memberSearchDebounce?.Dispose();
     }
 }

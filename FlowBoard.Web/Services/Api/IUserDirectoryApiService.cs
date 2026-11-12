@@ -8,4 +8,8 @@ public interface IUserDirectoryApiService
     Task<PagedResponse<UserDirectoryResponse>?> GetAsync(
         PagedSearchRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<PagedResponse<UserDirectoryResponse>?> GetEmployeesAsync(
+        PagedSearchRequest request,
+        CancellationToken cancellationToken = default);
 }

@@ -10,6 +10,8 @@ namespace FlowBoard.Web.Services.Api;
 public class WorkspaceApiService : IWorkspaceApiService
 {
     private const string Root = "api/workspace";
+    private static readonly JsonSerializerOptions ErrorDetailsJsonOptions =
+        new(JsonSerializerDefaults.Web);
     private readonly FlowBoardApiClient _apiClient;
     private readonly ToastService _toastService;
 
@@ -143,7 +145,7 @@ public class WorkspaceApiService : IWorkspaceApiService
         return member;
     }
 
-    public async Task<bool> RemoveMemberAsync(
+    public async Task<WorkspaceMemberRemovalResult> RemoveMemberAsync(
         Guid workspaceId,
         Guid userId,
         CancellationToken cancellationToken = default)
@@ -152,17 +154,26 @@ public class WorkspaceApiService : IWorkspaceApiService
             $"{Root}/{workspaceId}/members/{userId}",
             cancellationToken);
 
-        var removed = await ReportSuccessAsync(
-            response,
-            "Unable to remove the workspace member.",
-            cancellationToken);
-
-        if (removed)
+        using (response)
         {
-            _toastService.Success("Workspace member removed successfully.");
-        }
+            if (response.IsSuccessStatusCode)
+            {
+                _toastService.Success("Workspace member removed successfully.");
+                return new WorkspaceMemberRemovalResult(true);
+            }
 
-        return removed;
+            var error = await ReportFailureAsync(
+                response,
+                "Unable to remove the workspace member.",
+                cancellationToken,
+                conflictMessage: null);
+            var conflictDetails = ReadRemovalConflictDetails(error?.Details);
+
+            return new WorkspaceMemberRemovalResult(
+                false,
+                error?.Message,
+                conflictDetails);
+        }
     }
 
     private async Task<PagedResponse<T>?> GetPageAsync<T>(
@@ -222,7 +233,7 @@ public class WorkspaceApiService : IWorkspaceApiService
         }
     }
 
-    private async Task ReportFailureAsync(
+    private async Task<ErrorResponse?> ReportFailureAsync(
         HttpResponseMessage response,
         string errorMessage,
         CancellationToken cancellationToken,
@@ -230,14 +241,14 @@ public class WorkspaceApiService : IWorkspaceApiService
     {
         if (response.StatusCode == HttpStatusCode.Unauthorized)
         {
-            return;
+            return null;
         }
 
-        string? apiMessage = null;
+        ErrorResponse? apiError = null;
         try
         {
-            apiMessage = (await response.Content
-                .ReadFromJsonAsync<ErrorResponse>(cancellationToken))?.Message;
+            apiError = await response.Content
+                .ReadFromJsonAsync<ErrorResponse>(cancellationToken);
         }
         catch (JsonException)
         {
@@ -257,7 +268,30 @@ public class WorkspaceApiService : IWorkspaceApiService
         };
 
         _toastService.Error(
-            string.IsNullOrWhiteSpace(apiMessage) ? fallbackMessage : apiMessage);
+            string.IsNullOrWhiteSpace(apiError?.Message)
+                ? fallbackMessage
+                : apiError.Message);
+
+        return apiError;
+    }
+
+    private static WorkspaceMemberRemovalConflictDetails? ReadRemovalConflictDetails(
+        JsonElement? details)
+    {
+        if (details is not { ValueKind: JsonValueKind.Object })
+        {
+            return null;
+        }
+
+        try
+        {
+            return details.Value.Deserialize<WorkspaceMemberRemovalConflictDetails>(
+                ErrorDetailsJsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static string PageQuery(PagedRequest request)

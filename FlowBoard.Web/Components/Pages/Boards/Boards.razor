@@ -1,6 +1,7 @@
 @page "/workspaces/{WorkspaceId:guid}/boards"
 @attribute [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
 @inject IBoardApiService BoardApiService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 
 <PageTitle>Boards</PageTitle>
@@ -12,9 +13,12 @@
             <h1 class="page-title">Boards</h1>
             <p class="page-subtitle">Browse and open the work organized in this workspace.</p>
         </div>
-        <button class="btn btn-primary" @onclick="OpenCreate">
-            <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>New board
-        </button>
+        @if (canCreateBoards)
+        {
+            <button class="btn btn-primary" @onclick="OpenCreate">
+                <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>New board
+            </button>
+        }
     </header>
 
     <div class="search-wrap mb-4">
@@ -60,6 +64,7 @@
             CurrentPage="page"
             TotalPages="totalPages"
             TotalCount="totalCount"
+            PageSize="@PageSize"
             PageChanged="LoadPageAsync" />
     }
 
@@ -83,10 +88,20 @@
 
     private bool isLoading;
 
+    private bool canCreateBoards;
+
     private string? errorMessage;
 
     protected override async Task OnInitializedAsync()
     {
+        var user = (await AuthenticationStateProvider
+            .GetAuthenticationStateAsync()).User;
+        if (user.IsInRole("Admin") || user.IsInRole("Manager"))
+        {
+            canCreateBoards =
+                await BoardApiService.GetWorkspaceProjectsAsync(WorkspaceId) is not null;
+        }
+
         await LoadPageAsync(1);
     }
 

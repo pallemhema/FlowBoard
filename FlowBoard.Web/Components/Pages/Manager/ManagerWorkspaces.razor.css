@@ -17,6 +17,8 @@
   gap: 0.55rem;
 }
 
+/* Loading and error states */
+
 .manager-workspace-loading,
 .manager-workspace-resource-state,
 .manager-workspace-inline-state {
@@ -46,19 +48,17 @@
   line-height: 1.45;
 }
 
-.manager-workspace-summary,
-.manager-workspace-resource-panel {
+/* Workspace summary */
+
+.manager-workspace-summary {
+  display: grid;
   min-width: 0;
+  gap: 1rem;
   padding: clamp(1rem, 2.5vw, 1.5rem);
   border: 1px solid var(--flowboard-line);
   border-radius: 0.9rem;
   background: #fff;
   box-shadow: 0 1px 2px rgba(32, 36, 58, 0.035);
-}
-
-.manager-workspace-summary {
-  display: grid;
-  gap: 1rem;
 }
 
 .manager-workspace-label {
@@ -91,21 +91,7 @@
   gap: 0.45rem;
 }
 
-.manager-workspace-section-heading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-}
-
-.manager-workspace-section-heading h2 {
-  margin: 0;
-  color: var(--flowboard-ink);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
+/* Add workspace members */
 
 .manager-workspace-member-add {
   display: grid;
@@ -130,6 +116,8 @@
   font-size: 0.72rem;
   line-height: 1.45;
 }
+
+/* Workspace members */
 
 .manager-workspace-people-list {
   display: grid;
@@ -184,16 +172,7 @@
   font-weight: 700;
 }
 
-.manager-workspace-count {
-  flex: 0 0 auto;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid #e8e9f1;
-  border-radius: 999px;
-  color: #5e657e;
-  background: #fafbfe;
-  font-size: 0.72rem;
-  font-weight: 650;
-}
+/* Projects and boards */
 
 .manager-workspace-project-grid,
 .manager-workspace-board-grid {
@@ -231,6 +210,8 @@
   outline-offset: 2px;
 }
 
+/* Resource icons */
+
 .manager-workspace-resource-icon {
   display: grid;
   width: 2.25rem;
@@ -246,6 +227,8 @@
   color: #3765b0;
   background: #edf3ff;
 }
+
+/* Resource content */
 
 .manager-workspace-resource-copy {
   display: grid;
@@ -299,6 +282,8 @@
   overflow-wrap: anywhere;
 }
 
+/* Project and board metadata */
+
 .manager-workspace-project-dates,
 .manager-workspace-board-meta,
 .manager-workspace-board-description,
@@ -319,6 +304,8 @@
 .manager-workspace-board-project {
   color: #536079;
 }
+
+/* Responsive layout */
 
 @media (max-width: 767.98px) {
   .manager-workspace-project-grid,

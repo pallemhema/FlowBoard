@@ -15,9 +15,9 @@ public class Project : BaseEntity
 
     public ProjectStatus Status { get; set; } = ProjectStatus.Active;
 
-    public DateTime StartDate { get; set; }
+    public DateOnly StartDate { get; set; }
 
-    public DateTime EndDate { get; set; }
+    public DateOnly EndDate { get; set; }
 
     public Workspace Workspace { get; set; } = null!;
 

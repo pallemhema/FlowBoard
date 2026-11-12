@@ -26,9 +26,11 @@ public class ProjectConfiguration : BaseEntityConfiguration<Project>
             .HasMaxLength(50);
 
         builder.Property(x => x.StartDate)
+            .HasColumnType("date")
             .IsRequired();
 
         builder.Property(x => x.EndDate)
+            .HasColumnType("date")
             .IsRequired();
 
         builder.HasOne(x => x.Workspace)

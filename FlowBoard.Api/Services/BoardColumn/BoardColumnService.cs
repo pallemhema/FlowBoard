@@ -118,7 +118,7 @@ public class BoardColumnService : IBoardColumnService
         Guid columnId,
         CancellationToken cancellationToken = default)
     {
-        await _boardAuthorizationService.EnsureCanEditContentAsync(
+        await _boardAuthorizationService.EnsureCanDeleteBoardAsync(
             boardId,
             cancellationToken);
 

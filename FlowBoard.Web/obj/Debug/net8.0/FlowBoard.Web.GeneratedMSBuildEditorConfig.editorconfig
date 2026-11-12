@@ -126,10 +126,6 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Cb2FyZHMvTWVtYmVycy9FZGl0TWVtYmVyLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
-[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Employee/EmployeeProfile.razor]
-build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9FbXBsb3llZS9FbXBsb3llZVByb2ZpbGUucmF6b3I=
-build_metadata.AdditionalFiles.CssScope = 
-
 [/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Pages/Employee/EmployeeWorkspaces.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9FbXBsb3llZS9FbXBsb3llZVdvcmtzcGFjZXMucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = 
@@ -285,6 +281,22 @@ build_metadata.AdditionalFiles.CssScope = b-h5n5djuk5g
 [/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/DashboardStatCard.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvRGFzaGJvYXJkU3RhdENhcmQucmF6b3I=
 build_metadata.AdditionalFiles.CssScope = b-6qyvqyyycn
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/DataDisplay/DataListPanel.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvRGF0YURpc3BsYXkvRGF0YUxpc3RQYW5lbC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = b-ub97az5m9n
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/DataDisplay/DataListSelectFilter.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvRGF0YURpc3BsYXkvRGF0YUxpc3RTZWxlY3RGaWx0ZXIucmF6b3I=
+build_metadata.AdditionalFiles.CssScope = b-vk46pjc4t6
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/DataDisplay/DataListToolBar.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvRGF0YURpc3BsYXkvRGF0YUxpc3RUb29sQmFyLnJhem9y
+build_metadata.AdditionalFiles.CssScope = b-zjas7fdtgn
+
+[/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/DataDisplay/DataTable.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvRGF0YURpc3BsYXkvRGF0YVRhYmxlLnJhem9y
+build_metadata.AdditionalFiles.CssScope = b-1o0byrgwb4
 
 [/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/Components/Shared/GlobalSearch.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9TaGFyZWQvR2xvYmFsU2VhcmNoLnJhem9y

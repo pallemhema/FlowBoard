@@ -422,13 +422,27 @@ public class WorkspaceService : IWorkspaceService
             userId,
             cancellationToken);
 
-        if (await _dbContext.BoardMembers.AnyAsync(
-                member => member.UserId == userId &&
-                          member.Board.WorkspaceId == workspaceId,
-                cancellationToken))
+        var blockingBoardMemberships = await _dbContext.BoardMembers
+            .AsNoTracking()
+            .Where(member => member.UserId == userId &&
+                             member.Board.WorkspaceId == workspaceId)
+            .OrderBy(member => member.Board.Name)
+            .Select(member => new WorkspaceBoardMembershipDetails
+            {
+                BoardId = member.BoardId,
+                BoardName = member.Board.Name,
+                Role = member.Role.ToString()
+            })
+            .ToListAsync(cancellationToken);
+
+        if (blockingBoardMemberships.Count > 0)
         {
             throw new ConflictException(
-                "Remove the user's board memberships before removing them from the workspace.");
+                "Remove the user's board memberships before removing them from the workspace.",
+                new WorkspaceMemberRemovalConflictDetails
+                {
+                    BlockingBoardMemberships = blockingBoardMemberships
+                });
         }
 
         _dbContext.WorkspaceMembers.Remove(membership);

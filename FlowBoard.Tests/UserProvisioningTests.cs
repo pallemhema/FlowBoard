@@ -270,18 +270,83 @@ public sealed class UserProvisioningTests
             ExpiresAt = DateTime.UtcNow.AddDays(1)
         });
         await context.SaveChangesAsync();
-        var service = CreateService(context, database.CurrentUser);
+        var tokenService = new TestTokenService();
+        var service = new AuthService(
+            context,
+            new PasswordHasher(),
+            tokenService,
+            Options.Create(new JwtSettings
+            {
+                AccessTokenExpirationMinutes = 15,
+                RefreshTokenExpirationDays = 30
+            }),
+            database.CurrentUser);
 
-        await Assert.ThrowsAsync<UnauthorizedException>(
+        var incorrectPasswordError = await Assert.ThrowsAsync<UnauthorizedException>(
+            () => service.LoginAsync(new LoginRequest
+            {
+                Email = user.Email,
+                Password = "WrongPassword1!"
+            }));
+        var loginError = await Assert.ThrowsAsync<UnauthorizedException>(
             () => service.LoginAsync(new LoginRequest
             {
                 Email = user.Email,
                 Password = password
             }));
+        Assert.Equal(AuthErrorMessages.InvalidCredentials, incorrectPasswordError.Message);
+        Assert.Equal(AuthErrorMessages.AccountDeactivated, loginError.Message);
         await Assert.ThrowsAsync<UnauthorizedException>(
             () => service.RefreshTokenAsync(refreshTokenValue));
 
         Assert.Single(await context.RefreshTokens.ToListAsync());
+        Assert.Equal(0, tokenService.AccessTokenCalls);
+        Assert.Equal(0, tokenService.RefreshTokenCalls);
+    }
+
+    [Fact]
+    public async Task UnknownEmailAndIncorrectPasswordUseGenericLoginError()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using var context = database.CreateContext();
+        const string password = "StrongPassword1!";
+        var user = CreateUser(
+            Guid.NewGuid(),
+            "active@example.test",
+            UserRole.Employee);
+        user.PasswordHash = new PasswordHasher().Hash(password);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var tokenService = new TestTokenService();
+        var service = new AuthService(
+            context,
+            new PasswordHasher(),
+            tokenService,
+            Options.Create(new JwtSettings
+            {
+                AccessTokenExpirationMinutes = 15,
+                RefreshTokenExpirationDays = 30
+            }),
+            database.CurrentUser);
+
+        var unknownEmailError = await Assert.ThrowsAsync<UnauthorizedException>(
+            () => service.LoginAsync(new LoginRequest
+            {
+                Email = "unknown@example.test",
+                Password = password
+            }));
+        var incorrectPasswordError = await Assert.ThrowsAsync<UnauthorizedException>(
+            () => service.LoginAsync(new LoginRequest
+            {
+                Email = user.Email,
+                Password = "WrongPassword1!"
+            }));
+
+        Assert.Equal(AuthErrorMessages.InvalidCredentials, unknownEmailError.Message);
+        Assert.Equal(AuthErrorMessages.InvalidCredentials, incorrectPasswordError.Message);
+        Assert.Empty(await context.RefreshTokens.ToListAsync());
+        Assert.Equal(0, tokenService.AccessTokenCalls);
+        Assert.Equal(0, tokenService.RefreshTokenCalls);
     }
 
     [Fact]
@@ -538,8 +603,8 @@ public sealed class UserProvisioningTests
             Name = "Project",
             Workspace = workspace,
             Manager = manager,
-            StartDate = DateTime.UtcNow.Date,
-            EndDate = DateTime.UtcNow.Date.AddDays(1)
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)
         };
         var board = new Board
         {
@@ -793,15 +858,26 @@ public sealed class UserProvisioningTests
     private sealed class TestTokenService : ITokenService
     {
         private int _tokenNumber;
+        private int _accessTokenCalls;
+        private int _refreshTokenCalls;
+
+        public int AccessTokenCalls => _accessTokenCalls;
+        public int RefreshTokenCalls => _refreshTokenCalls;
 
         public string GenerateAccessToken(
             Guid userId,
             string email,
-            string role) =>
-            $"access-{Interlocked.Increment(ref _tokenNumber)}";
+            string role)
+        {
+            Interlocked.Increment(ref _accessTokenCalls);
+            return $"access-{Interlocked.Increment(ref _tokenNumber)}";
+        }
 
-        public string GenerateRefreshToken() =>
-            $"refresh-{Interlocked.Increment(ref _tokenNumber)}";
+        public string GenerateRefreshToken()
+        {
+            Interlocked.Increment(ref _refreshTokenCalls);
+            return $"refresh-{Interlocked.Increment(ref _tokenNumber)}";
+        }
     }
 
     private sealed class TestDatabase : IAsyncDisposable

@@ -1,16 +1,6 @@
 @page "/admin/projects"
 @attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
 @implements IDisposable
-
-@using System.Text.Json
-@using FlowBoard.Shared.DTOs.Auth
-@using FlowBoard.Shared.DTOs.Boards
-@using FlowBoard.Shared.DTOs.Common
-@using FlowBoard.Shared.DTOs.Projects
-@using FlowBoard.Shared.DTOs.Workspaces
-@using FlowBoard.Shared.Enums
-@using FlowBoard.Web.Services.Api
-
 @inject IProjectApiService ProjectApiService
 @inject IWorkspaceApiService WorkspaceApiService
 @inject IUserDirectoryApiService UserDirectoryApiService
@@ -67,7 +57,6 @@
                         @if (isEditingProject)
                         {
                             <input id="project-workspace" class="form-control" value="@editingProject?.WorkspaceName" disabled />
-                            <div class="form-text">The existing API does not support moving a project to another workspace.</div>
                         }
                         else
                         {
@@ -149,40 +138,41 @@
                         <SearchBox Value="@managerSearch"
                                    ValueChanged="HandleManagerSearchChanged"
                                    Placeholder="Search manager accounts by name or email" />
-                        <p class="project-form-help">The directory does not include roles. The backend requires a Manager who has access to the selected workspace.</p>
 
                         @if (!string.IsNullOrWhiteSpace(managerSelectionError))
                         {
                             <div class="project-form-error" role="alert">@managerSelectionError</div>
                         }
-                        @if (isLoadingManagerCandidates)
+                        @if (managerCandidates.IsLoading)
                         {
                             <div class="project-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching accounts...</div>
                         }
-                        else if (!string.IsNullOrWhiteSpace(managerCandidateError))
+                        else if (!string.IsNullOrWhiteSpace(managerCandidates.Error))
                         {
                             <div class="project-error compact" role="alert">
-                                <span>@managerCandidateError</span>
+                                <span>@managerCandidates.Error</span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadManagerCandidatesAsync(1)">Retry</button>
                             </div>
                         }
-                        else if (managerCandidates is { Items.Count: 0 })
-                        {
+                        else if (managerCandidates.Data is { Items.Count: 0 })                        {
                             <p class="project-empty-hint">No accounts match this search.</p>
                         }
-                        else if (managerCandidates is not null)
+                        else if (managerCandidates.Data?.Items is not null)
                         {
                             <div class="manager-candidate-list">
-                                @foreach (var candidate in managerCandidates.Items)
+                                @foreach (var candidate in managerCandidates.Data.Items)
                                 {
                                     <button type="button"
                                             class="project-person-row manager-candidate @(selectedManager?.UserId == candidate.UserId ? "project-person-selected" : null)"
                                             @onclick="() => SelectManager(candidate)">
-                                        <UserAvatar FirstName="@candidate.FirstName" LastName="@candidate.LastName" />
+                                        <UserAvatar FirstName="@candidate.FirstName"
+                                                    LastName="@candidate.LastName" />
+
                                         <span class="project-person-copy">
                                             <strong>@GetFullName(candidate.FirstName, candidate.LastName)</strong>
                                             <small>@candidate.Email</small>
                                         </span>
+
                                         @if (selectedManager?.UserId == candidate.UserId)
                                         {
                                             <i class="bi bi-check2" aria-label="Selected"></i>
@@ -190,10 +180,12 @@
                                     </button>
                                 }
                             </div>
-                            <Pagination CurrentPage="@managerCandidates.Page"
-                                        TotalPages="@managerCandidates.TotalPages"
-                                        TotalCount="@managerCandidates.TotalCount"
-                                        PageChanged="LoadManagerCandidatesAsync" />
+                            
+                            <Pagination CurrentPage="@managerCandidates.Data.Page"
+                                TotalPages="@managerCandidates.Data.TotalPages"
+                                TotalCount="@managerCandidates.Data.TotalCount"
+                                PageSize="@managerCandidates.Data.PageSize"
+                                PageChanged="LoadManagerCandidatesAsync" />
                         }
                         @if (selectedManager is not null)
                         {
@@ -215,16 +207,9 @@
                                 }
                             </InputSelect>
                         </div>
-                        <div class="mb-3 project-form-help project-status-help">
-                            Project status can be changed through the existing update API.
-                        </div>
+                  
                     }
-                    else
-                    {
-                        <div class="mb-3 project-form-wide">
-                            <p class="project-form-help mb-0">New projects are created with Active status by the existing API. Status can be changed after creation.</p>
-                        </div>
-                    }
+
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(projectFormError))
@@ -242,174 +227,179 @@
         </section>
     }
 
-    <section class="project-list-panel" aria-labelledby="project-list-title">
-        <div class="project-panel-heading">
-            <div>
-                <h2 id="project-list-title">Projects</h2>
-                <p>Review projects and their workspace, manager, and current status.</p>
-            </div>
-            @if (projectPage is not null)
+    <DataListPanel Title="Projects"
+                TitleId="project-list-title"
+                Description="Review projects and their workspace, manager, and current status."
+                CountText="@(projectList.Data is null
+                    ? null
+                    : $"{projectList.Data.TotalCount:N0} projects")"                
+                CssClass="project-list-panel">
+
+        <Toolbar>
+            <DataListToolBar SearchValue="@projectSearch"
+                            SearchValueChanged="HandleProjectSearchChanged"
+                            SearchPlaceholder="Search projects by name or description">
+
+                <Filters>
+                    <DataListSelectFilter TValue="string"
+                                        Id="workspace-filter"
+                                        Label="Filter by workspace"
+                                        Placeholder="All workspaces"
+                                        Options="@WorkspaceFilterOptions"
+                                        @bind-Value="workspaceFilter"
+                                        @bind-Value:after="HandleWorkspaceFilterChanged"
+                                        Disabled="@workspaceLoad.IsLoading" />
+
+                    <DataListSelectFilter TValue="string"
+                                        Id="status-filter"
+                                        Label="Filter by status"
+                                        Placeholder="All statuses"
+                                        Options="@StatusFilterOptions"
+                                        @bind-Value="statusFilter"
+                                        @bind-Value:after="HandleStatusFilterChanged" />
+                </Filters>
+
+                <Messages>
+                    @if (workspaceLoad.IsLoading)
+                    {
+                        <div class="workspace-options-loading" role="status">
+                            <span class="spinner-border spinner-border-sm text-primary"
+                                aria-hidden="true"></span>
+                            Loading workspace options...
+                        </div>
+                    }
+
+                    @if (workspaceLoad.Error is not null)
+                    {
+                        <div class="project-error compact" role="alert">
+                            @workspaceLoad.Error Workspace filtering and project creation may be limited.
+                        </div>
+                    }
+                </Messages>
+
+                <Actions>
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            disabled="@(!HasActiveFilters)"
+                            @onclick="ClearFilters">
+                        <i class="bi bi-x-circle me-1" aria-hidden="true"></i>
+                        Clear filters
+                    </button>
+                </Actions>
+
+            </DataListToolBar>
+        </Toolbar>
+
+        <ChildContent>
+            @if (!string.IsNullOrWhiteSpace(projectList.Error))
             {
-                <span class="project-total-count">@projectPage.TotalCount.ToString("N0") projects</span>
+                <div class="project-error" role="alert">
+                    <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
+                    <span>@projectList.Error</span>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-auto"
+                            @onclick="() => LoadProjectsAsync(projectList.CurrentPage)">
+                        Retry
+                    </button>
+                </div>
             }
-        </div>
-
-        <div class="project-filter-grid">
-            <div class="project-search">
-                <SearchBox Value="@projectSearch"
-                           ValueChanged="HandleProjectSearchChanged"
-                           Placeholder="Search projects by name or description" />
-            </div>
-            <div>
-                <label class="visually-hidden" for="workspace-filter">Filter by workspace</label>
-                <select id="workspace-filter" class="form-select" value="@workspaceFilter" @onchange="HandleWorkspaceFilterChanged">
-                    <option value="">All workspaces</option>
-                    @foreach (var workspace in workspaces)
+            else if (projectList.IsLoading)
+            {
+                <div class="project-loading" role="status" aria-live="polite">
+                    <span class="spinner-border spinner-border-sm text-primary"
+                        aria-hidden="true"></span>
+                    <span>Loading projects...</span>
+                </div>
+            }
+            else if (projectList.Data is not null && projectList.Data.Items.Count == 0)
+            {
+                <EmptyState Title="@(HasActiveFilters ? "No matching projects" : "No projects yet")"
+                            Message="@(HasActiveFilters
+                                ? "Try changing or clearing the selected filters."
+                                : "Create a project to begin organizing work across your workspaces.")">
+                    @if (!HasActiveFilters)
                     {
-                        <option value="@workspace.Id">@workspace.Name</option>
+                        <button type="button"
+                                class="btn btn-primary"
+                                @onclick="OpenCreateForm">
+                            Create your first project
+                        </button>
                     }
-                </select>
-            </div>
-            <div>
-                <label class="visually-hidden" for="status-filter">Filter by status</label>
-                <select id="status-filter" class="form-select" value="@statusFilter" @onchange="HandleStatusFilterChanged">
-                    <option value="">All statuses</option>
-                    @foreach (var status in Enum.GetValues<ProjectStatus>())
-                    {
-                        <option value="@status">@GetStatusLabel(status)</option>
-                    }
-                </select>
-            </div>
-            <button type="button"
-                    class="btn btn-outline-secondary"
-                    disabled="@(!HasActiveFilters)"
-                    @onclick="ClearFilters">
-                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>Clear filters
-            </button>
-        </div>
+                </EmptyState>
+            }
+            else if (projectList.Data is not null)
+            {
+                <DataTable TItem="ProjectResponse"
+                        Items="@projectList.Data.Items"
+                        Columns="@ProjectColumns"
+                        ItemKeySelector="project => project.ProjectId"
+                        CssClass="table project-table align-middle" >
+                    <MobileTemplate Context="project">
+                        <article class="project-mobile-card" @key="project.ProjectId">
+                            <div class="project-mobile-heading">
+                                <span class="project-avatar" aria-hidden="true">
+                                    <i class="bi bi-kanban"></i>
+                                </span>
 
-        @if (isLoadingWorkspaces)
-        {
-            <div class="workspace-options-loading" role="status">
-                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-                <span>Loading workspace options...</span>
-            </div>
-        }
-        @if (workspaceLoadError is not null)
-        {
-            <div class="project-error compact" role="alert">@workspaceLoadError Workspace filtering and project creation may be limited.</div>
-        }
+                                <span class="project-name-copy">
+                                    <strong>@project.Name</strong>
+                                    <small>@project.WorkspaceName</small>
+                                </span>
 
-        @if (!string.IsNullOrWhiteSpace(projectListError))
-        {
-            <div class="project-error" role="alert">
-                <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
-                <span>@projectListError</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadProjectsAsync(currentProjectPage)">Retry</button>
-            </div>
-        }
-        else if (isLoadingProjects)
-        {
-            <div class="project-loading" role="status" aria-live="polite">
-                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-                <span>Loading projects...</span>
-            </div>
-        }
-        else if (projectPage is not null && projectPage.Items.Count == 0)
-        {
-            <EmptyState Title="@(HasActiveFilters ? "No matching projects" : "No projects yet")"
-                        Message="@(HasActiveFilters ? "Try changing or clearing the selected filters." : "Create a project to begin organizing work across your workspaces.")">
-                @if (!HasActiveFilters)
-                {
-                    <button type="button" class="btn btn-primary" @onclick="OpenCreateForm">Create your first project</button>
-                }
-            </EmptyState>
-        }
-        else if (projectPage is not null)
-        {
-            <div class="project-table-wrap">
-                <table class="table project-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">Project</th>
-                            <th scope="col">Workspace</th>
-                            <th scope="col">Manager</th>
-                            <th scope="col">Status</th>
-                            <th scope="col">Updated</th>
-                            <th scope="col"><span class="visually-hidden">Actions</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var project in projectPage.Items)
-                        {
-                            <tr @key="project.ProjectId">
-                                <td>
-                                    <div class="project-name-cell">
-                                        <span class="project-avatar" aria-hidden="true"><i class="bi bi-kanban"></i></span>
-                                        <span class="project-name-copy">
-                                            <strong>@project.Name</strong>
-                                            <small>@(string.IsNullOrWhiteSpace(project.Description) ? "No description" : project.Description)</small>
-                                        </span>
-                                    </div>
-                                </td>
-                                <td>@project.WorkspaceName</td>
-                                <td>
-                                    <span class="project-manager-cell">
-                                        <UserAvatar FirstName="@project.Manager.FirstName" LastName="@project.Manager.LastName" SizeRem="1.6" />
-                                        <span>@GetFullName(project.Manager.FirstName, project.Manager.LastName)</span>
-                                    </span>
-                                </td>
-                                <td><span class="project-status-badge @GetStatusClass(project.Status)">@GetStatusLabel(project.Status)</span></td>
-                                <td class="project-date-cell">@GetProjectDate(project)</td>
-                                <td class="project-actions-cell">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenProjectDetailsAsync(project)">
-                                        <i class="bi bi-eye me-1" aria-hidden="true"></i>Details
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" aria-label="@($"Edit {project.Name}")" @onclick="() => OpenEditForm(project)">
-                                        <i class="bi bi-pencil" aria-hidden="true"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-danger" aria-label="@($"Delete {project.Name}")" @onclick="() => RequestProjectDeletion(project)">
-                                        <i class="bi bi-trash" aria-hidden="true"></i>
-                                    </button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+                                <span class="project-status-badge @GetStatusClass(project.Status)">
+                                    @GetStatusLabel(project.Status)
+                                </span>
+                            </div>
 
-            <div class="project-mobile-list">
-                @foreach (var project in projectPage.Items)
-                {
-                    <article class="project-mobile-card" @key="project.ProjectId">
-                        <div class="project-mobile-heading">
-                            <span class="project-avatar" aria-hidden="true"><i class="bi bi-kanban"></i></span>
-                            <span class="project-name-copy">
-                                <strong>@project.Name</strong>
-                                <small>@project.WorkspaceName</small>
-                            </span>
-                            <span class="project-status-badge @GetStatusClass(project.Status)">@GetStatusLabel(project.Status)</span>
-                        </div>
-                        <p class="project-mobile-description">@(string.IsNullOrWhiteSpace(project.Description) ? "No description" : project.Description)</p>
-                        <div class="project-mobile-meta">
-                            <span>Manager: @GetFullName(project.Manager.FirstName, project.Manager.LastName)</span>
-                            <span>Updated: @GetProjectDate(project)</span>
-                        </div>
-                        <div class="project-mobile-actions">
-                            <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => OpenProjectDetailsAsync(project)">Details</button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenEditForm(project)">Edit</button>
-                            <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RequestProjectDeletion(project)">Delete</button>
-                        </div>
-                    </article>
-                }
-            </div>
+                            <p class="project-mobile-description">
+                                @(string.IsNullOrWhiteSpace(project.Description)
+                                    ? "No description"
+                                    : project.Description)
+                            </p>
 
-            <Pagination CurrentPage="@projectPage.Page"
-                        TotalPages="@projectPage.TotalPages"
-                        TotalCount="@projectPage.TotalCount"
-                        PageChanged="LoadProjectsAsync" />
-        }
-    </section>
+                            <div class="project-mobile-meta">
+                                <span>
+                                    Manager: @GetFullName(
+                                        project.Manager.FirstName,
+                                        project.Manager.LastName)
+                                </span>
+                                <span>Updated: @GetProjectDate(project)</span>
+                            </div>
+
+                            <div class="project-mobile-actions">
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-primary"
+                                        @onclick="() => OpenProjectDetailsAsync(project)">
+                                    Details
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => OpenEditForm(project)">
+                                    Edit
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger"
+                                        @onclick="() => RequestProjectDeletion(project)">
+                                    Delete
+                                </button>
+                            </div>
+                        </article>
+                    </MobileTemplate>
+                    
+                </DataTable>
+                <Pagination CurrentPage="@projectList.Data.Page"
+                        TotalPages="@projectList.Data.TotalPages"
+                        TotalCount="@projectList.Data.TotalCount"
+                        PageSize="@projectList.Data.PageSize"
+                        PageChanged="LoadProjectsAsync" />              
+
+            }
+                    
+                    
+        </ChildContent>
+    </DataListPanel>
 
     @if (selectedProject is not null)
     {
@@ -437,7 +427,7 @@
                     <strong>@GetFullName(selectedProject.Manager.FirstName, selectedProject.Manager.LastName)</strong>
                     <small>@selectedProject.Manager.Email</small>
                 </div>
-                <div><span>Schedule</span><strong>@selectedProject.StartDate.ToLocalTime().ToString("MMM d, yyyy") – @selectedProject.EndDate.ToLocalTime().ToString("MMM d, yyyy")</strong></div>
+                <div><span>Schedule</span><strong>@selectedProject.StartDate.ToString("MMM d, yyyy") – @selectedProject.EndDate.ToString("MMM d, yyyy")</strong></div>
                 <div><span>Created</span><strong>@selectedProject.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</strong></div>
                 @if (selectedProject.ModifiedAt.HasValue)
                 {
@@ -452,11 +442,10 @@
                     <div class="project-subsection-heading">
                         <div>
                             <h3 id="project-members-title">Project members</h3>
-                            <p>Eligible Employee accounts only, validated by the API.</p>
                         </div>
-                        @if (projectMembersPage is not null)
+                        @if (projectMembers.Data is not null)
                         {
-                            <span class="project-detail-count">@projectMembersPage.TotalCount.ToString("N0")</span>
+                            <span class="project-detail-count">@projectMembers.Data.TotalCount.ToString("N0")</span>
                         }
                     </div>
 
@@ -464,33 +453,32 @@
                     <SearchBox Value="@memberCandidateSearch"
                                ValueChanged="HandleMemberCandidateSearchChanged"
                                Placeholder="Search by name or email" />
-                    <p class="project-form-help">The directory has no role field; the API accepts only Employee accounts and rejects duplicate membership.</p>
-                    @if (!string.IsNullOrWhiteSpace(memberOperationError))
+                    @if (!string.IsNullOrWhiteSpace(memberOperation.Error))
                     {
-                        <div class="project-error compact" role="alert">@memberOperationError</div>
+                        <div class="project-error compact" role="alert">@memberOperation.Error</div>
                     }
-                    @if (isLoadingMemberCandidates)
+                    @if (managerCandidates.IsLoading)
                     {
                         <div class="project-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Searching accounts...</div>
                     }
-                    else if (!string.IsNullOrWhiteSpace(memberCandidateError))
+                    else if (!string.IsNullOrWhiteSpace(managerCandidates.Error))
                     {
                         <div class="project-error compact" role="alert">
-                            <span>@memberCandidateError</span>
+                            <span>@managerCandidates.Error</span>
                             <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadMemberCandidatesAsync(1)">Retry</button>
                         </div>
                     }
-                    else if (memberCandidates is { Items.Count: 0 })
+                    else if (memberCandidates.Data is { Items.Count: 0 })
                     {
                         <p class="project-empty-hint">No accounts match this search.</p>
                     }
-                    else if (memberCandidates is not null)
+                    else if (memberCandidates.Data is not null)
                     {
                         <div class="project-member-candidate-list">
-                            @foreach (var candidate in memberCandidates.Items)
+                            @foreach (var candidate in memberCandidates.Data.Items)
                             {
                                 var isManager = selectedProject.ManagerId == candidate.UserId;
-                                var isMember = projectMembersPage?.Items.Any(member => member.UserId == candidate.UserId) == true;
+                                var isMember = projectMembers.Data?.Items.Any(member => member.UserId == candidate.UserId) == true;
                                 <div class="project-person-row" @key="candidate.UserId">
                                     <UserAvatar FirstName="@candidate.FirstName" LastName="@candidate.LastName" />
                                     <span class="project-person-copy">
@@ -514,9 +502,10 @@
                                 </div>
                             }
                         </div>
-                        <Pagination CurrentPage="@memberCandidates.Page"
-                                    TotalPages="@memberCandidates.TotalPages"
-                                    TotalCount="@memberCandidates.TotalCount"
+                        <Pagination CurrentPage="@memberCandidates.Data.Page"
+                                    TotalPages="@memberCandidates.Data.TotalPages"
+                                    TotalCount="@memberCandidates.Data.TotalCount"
+                                    PageSize="@memberCandidates.Data.PageSize"
                                     PageChanged="LoadMemberCandidatesAsync" />
                     }
 
@@ -526,26 +515,26 @@
                                    ValueChanged="HandleMemberSearchChanged"
                                    Placeholder="Filter members by name or email" />
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(projectMembersError))
+                    @if (!string.IsNullOrWhiteSpace(projectMembers.Error))
                     {
                         <div class="project-error compact" role="alert">
-                            <span>@projectMembersError</span>
+                            <span>@projectMembers.Error</span>
                             <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryProjectMembersAsync">Retry</button>
                         </div>
                     }
-                    else if (isLoadingProjectMembers)
+                    else if (projectMembers.IsLoading)
                     {
                         <div class="project-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading project members...</div>
                     }
-                    else if (projectMembersPage is not null && projectMembersPage.Items.Count == 0)
+                    else if (projectMembers.Data is not null && projectMembers.Data.Items.Count == 0)
                     {
-                        <EmptyState Title="@(projectMembersPage.TotalCount == 0 ? "No project members" : "No matching members")"
-                                    Message="@(projectMembersPage.TotalCount == 0 ? "Add Employee accounts to this project as needed." : "Try another name or email address.")" />
+                        <EmptyState Title="@(projectMembers.Data.TotalCount == 0 ? "No project members" : "No matching members")"
+                                    Message="@(projectMembers.Data.TotalCount == 0 ? "Add Employee accounts to this project as needed." : "Try another name or email address.")" />
                     }
-                    else if (projectMembersPage is not null)
+                    else if (projectMembers.Data is not null)
                     {
                         <div class="project-current-member-list">
-                            @foreach (var member in projectMembersPage.Items)
+                            @foreach (var member in projectMembers.Data.Items)
                             {
                                 <div class="project-person-row" @key="member.UserId">
                                     <UserAvatar FirstName="@member.User.FirstName" LastName="@member.User.LastName" />
@@ -569,9 +558,10 @@
                                 </div>
                             }
                         </div>
-                        <Pagination CurrentPage="@projectMembersPage.Page"
-                                    TotalPages="@projectMembersPage.TotalPages"
-                                    TotalCount="@projectMembersPage.TotalCount"
+                        <Pagination CurrentPage="@projectMembers.Data.Page"
+                                    TotalPages="@projectMembers.Data.TotalPages"
+                                    TotalCount="@projectMembers.Data.TotalCount"
+                                    PageSize="@projectMembers.Data.PageSize"
                                     PageChanged="LoadProjectMemberPageAsync" />
                     }
                 </section>
@@ -580,21 +570,20 @@
                     <div class="project-subsection-heading">
                         <div>
                             <h3 id="project-boards-title">Project boards</h3>
-                            <p>Boards attached to this project only; no board actions are available here.</p>
                         </div>
                         @if (projectBoards is not null)
                         {
                             <span class="project-detail-count">@projectBoards.Count.ToString("N0")</span>
                         }
                     </div>
-                    @if (isLoadingProjectBoards)
+                    @if (projectBoardsLoad.IsLoading)
                     {
                         <div class="project-inline-loading" role="status"><span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>Loading project boards...</div>
                     }
-                    else if (!string.IsNullOrWhiteSpace(projectBoardsError))
+                    else if (!string.IsNullOrWhiteSpace(projectBoardsLoad.Error))
                     {
                         <div class="project-error compact" role="alert">
-                            <span>@projectBoardsError</span>
+                            <span>@projectBoardsLoad.Error</span>
                             <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryProjectBoardsAsync">Retry</button>
                         </div>
                     }
@@ -629,973 +618,1297 @@
                         IsBusy="@isSubmitting"
                         OnCancel="CancelProjectDeletion"
                         OnConfirm="DeleteProjectAsync">
-        <p>Projects with associated boards or members cannot be deleted. This will not remove boards, cards, members, or other dependent resources.</p>
-        @if (!string.IsNullOrWhiteSpace(deleteProjectError))
+        @if (!string.IsNullOrWhiteSpace(deleteProjectOperation.Error))
         {
-            <div class="project-error compact" role="alert">@deleteProjectError</div>
+            <div class="project-error compact" role="alert">@deleteProjectOperation.Error</div>
         }
     </ConfirmationDialog>
 </div>
-
 @code {
-    private const int ProjectPageSize = 10;
-    private const int ProjectMemberPageSize = 10;
-    private const int ResourcePageSize = 100;
-    private const int WorkspacePageSize = 100;
-    private const int DirectoryPageSize = 10;
+// Page size defaults
+private const int ProjectPageSize = PageSizeDefaults.Default;
+private const int ProjectMemberPageSize = PageSizeDefaults.Default;
+private const int ResourcePageSize = PageSizeDefaults.Resource;
+private const int WorkspacePageSize = PageSizeDefaults.Resource;
+private const int DirectoryPageSize = PageSizeDefaults.Default;
+// Project list state
+private PagedListState<ProjectResponse> projectList = new()
+{
+    PageSize = ProjectPageSize,
+    IsLoading = true
+};
 
-    private PagedResponse<ProjectResponse>? projectPage;
-    private List<WorkspaceResponse> workspaces = [];
-    private ProjectResponse? selectedProject;
-    private ProjectResponse? editingProject;
-    private ProjectResponse? projectPendingDeletion;
-    private CreateProjectRequest createRequest = NewCreateRequest();
-    private UpdateProjectRequest updateRequest = NewUpdateRequest();
-    private PagedResponse<UserDirectoryResponse>? managerCandidates;
-    private PagedResponse<UserDirectoryResponse>? memberCandidates;
-    private UserDirectoryResponse? selectedManager;
-    private PagedResponse<ProjectMemberResponse>? projectMembersPage;
-    private List<BoardResponse>? projectBoards;
-    private string? projectSearch;
-    private string? workspaceFilter;
-    private string? statusFilter;
-    private string? managerSearch;
-    private string? memberCandidateSearch;
-    private string? memberSearch;
-    private string? projectListError;
-    private string? workspaceLoadError;
-    private string? projectFormError;
-    private string? workspaceSelectionError;
-    private string? managerSelectionError;
-    private string? managerCandidateError;
-    private string? memberCandidateError;
-    private string? memberOperationError;
-    private string? projectMembersError;
-    private string? projectBoardsError;
-    private string? deleteProjectError;
-    private int currentProjectPage = 1;
-    private int managerCandidatePage = 1;
-    private int memberCandidatePage = 1;
-    private int memberListPage = 1;
-    private Guid? pendingRemovalUserId;
-    private bool isLoadingProjects = true;
-    private bool isLoadingWorkspaces;
-    private bool isLoadingManagerCandidates;
-    private bool isLoadingMemberCandidates;
-    private bool isLoadingProjectMembers;
-    private bool isLoadingProjectBoards;
-    private bool isSubmitting;
-    private bool showProjectForm;
-    private bool isEditingProject;
-    private long projectRequestVersion;
-    private long managerCandidateVersion;
-    private long memberCandidateVersion;
-    private long projectDetailsVersion;
-    private long projectMembersRequestVersion;
-    private CancellationTokenSource? projectSearchDebounce;
-    private CancellationTokenSource? managerSearchDebounce;
-    private CancellationTokenSource? memberCandidateSearchDebounce;
-    private CancellationTokenSource? memberSearchDebounce;
+// Workspace state
+private List<WorkspaceResponse> workspaces = [];
+private AsyncOperationState workspaceLoad = new();
 
-    private bool HasActiveFilters =>
-        !string.IsNullOrWhiteSpace(projectSearch) ||
-        !string.IsNullOrWhiteSpace(workspaceFilter) ||
-        !string.IsNullOrWhiteSpace(statusFilter);
+// Selected project
+private ProjectResponse? selectedProject;
+private ProjectResponse? editingProject;
+private ProjectResponse? projectPendingDeletion;
 
-    protected override async Task OnInitializedAsync()
-    {
-        await Task.WhenAll(LoadWorkspacesAsync(), LoadProjectsAsync(1));
-    }
+// Project forms
+private CreateProjectRequest createRequest = NewCreateRequest();
+private UpdateProjectRequest updateRequest = NewUpdateRequest();
 
-    private async Task LoadWorkspacesAsync()
-    {
-        isLoadingWorkspaces = true;
-        workspaceLoadError = null;
-        try
+// Manager and member candidate states
+private PagedListState<UserDirectoryResponse> managerCandidates = new()
+{
+    PageSize = DirectoryPageSize
+};
+
+private PagedListState<UserDirectoryResponse> memberCandidates = new()
+{
+    PageSize = DirectoryPageSize
+};
+
+private UserDirectoryResponse? selectedManager;
+
+// Project details states
+private PagedListState<ProjectMemberResponse> projectMembers = new()
+{
+    PageSize = ProjectMemberPageSize
+};
+
+private List<BoardResponse>? projectBoards;
+
+// Operation states
+private AsyncOperationState projectFormOperation = new();
+private AsyncOperationState memberOperation = new();
+private AsyncOperationState projectBoardsLoad = new();
+private AsyncOperationState deleteProjectOperation = new();
+
+// Search and filters
+private string? projectSearch;
+private string? workspaceFilter;
+private string? statusFilter;
+private string? managerSearch;
+private string? memberCandidateSearch;
+private string? memberSearch;
+
+// Form validation errors
+private string? projectFormError;
+private string? workspaceSelectionError;
+private string? managerSelectionError;
+
+// Removal confirmation
+private Guid? pendingRemovalUserId;
+
+// Form visibility
+private bool showProjectForm;
+private bool isEditingProject;
+
+// Combined submission state
+private bool isSubmitting =>
+    projectFormOperation.IsSubmitting ||
+    memberOperation.IsSubmitting ||
+    deleteProjectOperation.IsSubmitting;
+
+// Request versioning
+private long projectRequestVersion;
+private long managerCandidateVersion;
+private long memberCandidateVersion;
+private long projectDetailsVersion;
+private long projectMembersRequestVersion;
+
+// Search debounce
+
+private readonly DebouncedAction memberSearchDebounce = new();
+
+private readonly DebouncedAction projectSearchDebounce = new();
+private readonly DebouncedAction managerSearchDebounce = new();
+private readonly DebouncedAction memberCandidateSearchDebounce = new();
+
+// Workspace filter options
+private IReadOnlyList<DataListFilterOption<string>> WorkspaceFilterOptions =>
+    workspaces
+        .Select(workspace => new DataListFilterOption<string>
         {
-            var firstPage = await WorkspaceApiService.GetAsync(
-                new PagedSearchRequest { Page = 1, PageSize = WorkspacePageSize });
-            if (firstPage is null)
+            Value = workspace.Id.ToString(),
+            Text = workspace.Name
+        })
+        .ToList();
+
+// Project status filter options
+private IReadOnlyList<DataListFilterOption<string>> StatusFilterOptions =>
+    Enum.GetValues<ProjectStatus>()
+        .Select(status => new DataListFilterOption<string>
+        {
+            Value = status.ToString(),
+            Text = GetStatusLabel(status)
+        })
+        .ToList();
+
+// Project table columns
+private IReadOnlyList<DataTableColumn<ProjectResponse>> ProjectColumns =>
+[
+    new()
+    {
+        Header = "Project",
+        Template = project => @<div class="project-name-cell">
+            <span class="project-avatar" aria-hidden="true">
+                <i class="bi bi-kanban"></i>
+            </span>
+            <span class="project-name-copy">
+                <strong>@project.Name</strong>
+                <small>
+                    @(string.IsNullOrWhiteSpace(project.Description)
+                        ? "No description"
+                        : project.Description)
+                </small>
+            </span>
+        </div>
+    },
+    new()
+    {
+        Header = "Workspace",
+        Template = project => @<span>@project.WorkspaceName</span>
+    },
+    new()
+    {
+        Header = "Manager",
+        Template = project => @<span class="project-manager-cell">
+            @if (project.Manager is not null)
             {
-                workspaceLoadError = "Workspace options could not be loaded.";
-                return;
-            }
-
-            var result = firstPage.Items.ToList();
-            for (var page = 2; page <= firstPage.TotalPages; page++)
-            {
-                var response = await WorkspaceApiService.GetAsync(
-                    new PagedSearchRequest { Page = page, PageSize = WorkspacePageSize });
-                if (response is null)
-                {
-                    workspaceLoadError = "The workspace list could not be loaded completely.";
-                    return;
-                }
-
-                result.AddRange(response.Items);
-            }
-
-            workspaces = result.OrderBy(workspace => workspace.Name).ToList();
-        }
-        catch (HttpRequestException)
-        {
-            workspaceLoadError = "The workspace service could not be reached.";
-        }
-        catch (JsonException)
-        {
-            workspaceLoadError = "The workspace service returned an invalid response.";
-        }
-        finally
-        {
-            isLoadingWorkspaces = false;
-        }
-    }
-
-    private async Task LoadProjectsAsync(int page)
-    {
-        var version = ++projectRequestVersion;
-        currentProjectPage = page;
-        isLoadingProjects = true;
-        projectListError = null;
-        try
-        {
-            var request = new ProjectQueryRequest
-            {
-                Page = page,
-                PageSize = ProjectPageSize,
-                Search = string.IsNullOrWhiteSpace(projectSearch) ? null : projectSearch,
-                WorkspaceId = Guid.TryParse(workspaceFilter, out var workspaceId) ? workspaceId : null,
-                Status = Enum.TryParse<ProjectStatus>(statusFilter, out var status) ? status : null
-            };
-            var response = await ProjectApiService.GetAsync(request);
-            if (version != projectRequestVersion)
-            {
-                return;
-            }
-
-            if (response is null)
-            {
-                projectPage = null;
-                projectListError = "Projects could not be loaded. Confirm your Admin access and retry.";
-                return;
-            }
-
-            projectPage = response;
-            if (selectedProject is not null)
-            {
-                selectedProject = response.Items.FirstOrDefault(
-                    project => project.ProjectId == selectedProject.ProjectId) ?? selectedProject;
-            }
-        }
-        catch (HttpRequestException)
-        {
-            if (version == projectRequestVersion)
-            {
-                projectPage = null;
-                projectListError = "The project service could not be reached.";
-            }
-        }
-        catch (JsonException)
-        {
-            if (version == projectRequestVersion)
-            {
-                projectPage = null;
-                projectListError = "The project service returned an invalid response.";
-            }
-        }
-        finally
-        {
-            if (version == projectRequestVersion)
-            {
-                isLoadingProjects = false;
-            }
-        }
-    }
-
-    private async Task HandleProjectSearchChanged(string? value)
-    {
-        projectSearch = value?.Trim();
-        await DebounceProjectFiltersAsync();
-    }
-
-    private async Task HandleWorkspaceFilterChanged(ChangeEventArgs args)
-    {
-        workspaceFilter = args.Value?.ToString();
-        await LoadProjectsAsync(1);
-    }
-
-    private async Task HandleStatusFilterChanged(ChangeEventArgs args)
-    {
-        statusFilter = args.Value?.ToString();
-        await LoadProjectsAsync(1);
-    }
-
-    private async Task DebounceProjectFiltersAsync()
-    {
-        projectSearchDebounce?.Cancel();
-        projectSearchDebounce?.Dispose();
-        projectSearchDebounce = new CancellationTokenSource();
-        var token = projectSearchDebounce.Token;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            if (!token.IsCancellationRequested)
-            {
-                await LoadProjectsAsync(1);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task ClearFilters()
-    {
-        projectSearch = null;
-        workspaceFilter = null;
-        statusFilter = null;
-        projectSearchDebounce?.Cancel();
-        await LoadProjectsAsync(1);
-    }
-
-    private void OpenCreateForm()
-    {
-        isEditingProject = false;
-        editingProject = null;
-        ResetManagerCandidates();
-        managerSearch = null;
-        projectFormError = null;
-        workspaceSelectionError = null;
-        managerSelectionError = null;
-        createRequest = NewCreateRequest();
-        showProjectForm = true;
-    }
-
-    private void OpenEditForm(ProjectResponse project)
-    {
-        isEditingProject = true;
-        editingProject = project;
-        ResetManagerCandidates();
-        managerSelectionError = null;
-        projectFormError = null;
-        managerSearch = null;
-        updateRequest = new UpdateProjectRequest
-        {
-            Name = project.Name,
-            Description = project.Description,
-            Status = project.Status,
-            StartDate = project.StartDate,
-            EndDate = project.EndDate
-        };
-        showProjectForm = true;
-    }
-
-    private void CloseProjectForm()
-    {
-        if (isSubmitting)
-        {
-            return;
-        }
-
-        showProjectForm = false;
-        projectFormError = null;
-        workspaceSelectionError = null;
-        managerSelectionError = null;
-        editingProject = null;
-    }
-
-    private async Task SaveProjectAsync()
-    {
-        if (isSubmitting)
-        {
-            return;
-        }
-
-        projectFormError = null;
-        workspaceSelectionError = null;
-        managerSelectionError = null;
-
-        if (!isEditingProject && createRequest.WorkspaceId == Guid.Empty)
-        {
-            workspaceSelectionError = "Select a workspace.";
-            return;
-        }
-
-        var managerId = selectedManager?.UserId;
-        if (!isEditingProject && !managerId.HasValue)
-        {
-            managerSelectionError = "Select a Project Manager.";
-            return;
-        }
-
-        isSubmitting = true;
-        try
-        {
-            if (isEditingProject)
-            {
-                if (editingProject is null)
-                {
-                    projectFormError = "Select a project to edit.";
-                    return;
-                }
-
-                var updated = await ProjectApiService.UpdateAsync(
-                    editingProject.ProjectId,
-                    new UpdateProjectRequest
-                    {
-                        Name = updateRequest.Name,
-                        Description = updateRequest.Description,
-                        ManagerId = managerId,
-                        Status = updateRequest.Status,
-                        StartDate = updateRequest.StartDate,
-                        EndDate = updateRequest.EndDate
-                    });
-                if (updated is null)
-                {
-                    projectFormError = "The project was not updated. Check the API message and retry.";
-                    return;
-                }
-
-                showProjectForm = false;
-                selectedProject = updated;
-                ToastService.Success($"Project \"{updated.Name}\" updated.");
-                await LoadProjectsAsync(currentProjectPage);
-                await LoadProjectDetailsAsync(updated);
+                <UserAvatar FirstName="@project.Manager.FirstName"
+                            LastName="@project.Manager.LastName"
+                            SizeRem="1.6" />
+                <span>
+                    @GetFullName(
+                        project.Manager.FirstName,
+                        project.Manager.LastName)
+                </span>
             }
             else
             {
-                var created = await ProjectApiService.CreateAsync(
-                    new CreateProjectRequest
-                    {
-                        Name = createRequest.Name,
-                        Description = createRequest.Description,
-                        WorkspaceId = createRequest.WorkspaceId,
-                        ManagerId = managerId,
-                        StartDate = createRequest.StartDate,
-                        EndDate = createRequest.EndDate
-                    });
-                if (created is null)
-                {
-                    projectFormError = "The project was not created. Confirm the selected Manager has access to the workspace.";
-                    return;
-                }
-
-                showProjectForm = false;
-                ToastService.Success($"Project \"{created.Name}\" created.");
-                await LoadProjectsAsync(1);
-                await OpenProjectDetailsAsync(created);
+                <span>Unassigned</span>
             }
-        }
-        catch (HttpRequestException)
-        {
-            projectFormError = "The project service could not be reached.";
-        }
-        catch (JsonException)
-        {
-            projectFormError = "The project service returned an invalid response.";
-        }
-        finally
-        {
-            isSubmitting = false;
-        }
-    }
-
-    private async Task OpenProjectDetailsAsync(ProjectResponse project)
+        </span>
+    },
+    new()
     {
-        ProjectResponse? fullProject;
-        try
+        Header = "Status",
+        Template = project => @<span class="project-status-badge @GetStatusClass(project.Status)">
+            @GetStatusLabel(project.Status)
+        </span>
+    },
+    new()
+    {
+        Header = "Updated",
+        Template = project => @<span class="project-date-cell">
+            @GetProjectDate(project)
+        </span>
+    },
+    new()
+    {
+        Header = "Actions",
+        HeaderClass = "text-end",
+        CellClass = "project-actions-cell",
+        Template = project => @<div class="d-flex justify-content-end gap-2">
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    @onclick="() => OpenProjectDetailsAsync(project)">
+                <i class="bi bi-eye me-1" aria-hidden="true"></i>
+                Details
+            </button>
+
+            <button type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    aria-label="@($"Edit {project.Name}")"
+                    @onclick="() => OpenEditForm(project)">
+                <i class="bi bi-pencil"></i>
+            </button>
+
+            <button type="button"
+                    class="btn btn-sm btn-outline-danger"
+                    aria-label="@($"Delete {project.Name}")"
+                    @onclick="() => RequestProjectDeletion(project)">
+                <i class="bi bi-trash"></i>
+            </button>
+        </div>
+    }
+];
+
+private bool HasActiveFilters =>
+    !string.IsNullOrWhiteSpace(projectSearch) ||
+    !string.IsNullOrWhiteSpace(workspaceFilter) ||
+    !string.IsNullOrWhiteSpace(statusFilter);
+
+protected override async Task OnInitializedAsync()
+{
+    await Task.WhenAll(
+        LoadWorkspacesAsync(),
+        LoadProjectsAsync(1));
+}
+
+// ---------------------------------------------------------
+// Workspace loading
+// ---------------------------------------------------------
+
+private async Task LoadWorkspacesAsync()
+{
+    workspaceLoad.IsLoading = true;
+    workspaceLoad.Error = null;
+
+    try
+    {
+        var firstPage = await WorkspaceApiService.GetAsync(
+            new PagedSearchRequest
+            {
+                Page = 1,
+                PageSize = WorkspacePageSize
+            });
+
+        if (firstPage is null)
         {
-            fullProject = await ProjectApiService.GetByIdAsync(project.ProjectId);
-        }
-        catch (HttpRequestException)
-        {
-            ToastService.Error("The project service could not be reached.");
+            workspaceLoad.Error = "Workspace options could not be loaded.";
             return;
         }
-        catch (JsonException)
+
+        var result = firstPage.Items.ToList();
+
+        for (var page = 2; page <= firstPage.TotalPages; page++)
         {
-            ToastService.Error("The project service returned an invalid response.");
-            return;
-        }
-
-        if (fullProject is null)
-        {
-            ToastService.Error("Project details could not be loaded.");
-            return;
-        }
-
-        await LoadProjectDetailsAsync(fullProject);
-    }
-
-    private async Task LoadProjectDetailsAsync(ProjectResponse project)
-    {
-        memberCandidateVersion++;
-        memberCandidateSearchDebounce?.Cancel();
-        selectedProject = project;
-        projectMembersPage = null;
-        projectBoards = null;
-        projectMembersError = null;
-        projectBoardsError = null;
-        memberOperationError = null;
-        memberCandidates = null;
-        memberCandidateError = null;
-        memberCandidateSearch = null;
-        memberCandidatePage = 1;
-        memberSearch = null;
-        memberListPage = 1;
-        pendingRemovalUserId = null;
-        memberCandidateSearchDebounce?.Cancel();
-        var version = ++projectDetailsVersion;
-        await Task.WhenAll(
-            LoadProjectMembersAsync(version, project.ProjectId, 1),
-            LoadProjectBoardsAsync(version, project));
-    }
-
-    private Task RetryProjectMembersAsync() =>
-        selectedProject is null
-            ? Task.CompletedTask
-            : LoadProjectMembersAsync(projectDetailsVersion, selectedProject.ProjectId, memberListPage);
-
-    private Task LoadProjectMemberPageAsync(int page) =>
-        selectedProject is null
-            ? Task.CompletedTask
-            : LoadProjectMembersAsync(projectDetailsVersion, selectedProject.ProjectId, page);
-
-    private Task RetryProjectBoardsAsync() =>
-        selectedProject is null
-            ? Task.CompletedTask
-            : LoadProjectBoardsAsync(projectDetailsVersion, selectedProject);
-
-    private void CloseProjectDetails()
-    {
-        projectDetailsVersion++;
-        selectedProject = null;
-        projectMembersPage = null;
-        projectBoards = null;
-        memberCandidates = null;
-        pendingRemovalUserId = null;
-        memberCandidateSearchDebounce?.Cancel();
-        memberCandidateVersion++;
-    }
-
-    private void ResetManagerCandidates()
-    {
-        managerCandidateVersion++;
-        managerSearchDebounce?.Cancel();
-        managerSearchDebounce?.Dispose();
-        managerSearchDebounce = null;
-        selectedManager = null;
-        managerCandidates = null;
-        managerCandidateError = null;
-        isLoadingManagerCandidates = false;
-    }
-
-    private async Task LoadProjectMembersAsync(
-        long detailsVersion,
-        Guid projectId,
-        int page)
-    {
-        var requestVersion = ++projectMembersRequestVersion;
-        memberListPage = page;
-        isLoadingProjectMembers = true;
-        projectMembersError = null;
-        try
-        {
-            var response = await ProjectApiService.GetMembersAsync(
-                projectId,
+            var response = await WorkspaceApiService.GetAsync(
                 new PagedSearchRequest
                 {
                     Page = page,
-                    PageSize = ProjectMemberPageSize,
-                    Search = string.IsNullOrWhiteSpace(memberSearch) ? null : memberSearch
+                    PageSize = WorkspacePageSize
                 });
-            if (detailsVersion != projectDetailsVersion ||
-                requestVersion != projectMembersRequestVersion)
-            {
-                return;
-            }
 
             if (response is null)
             {
-                projectMembersPage = null;
-                projectMembersError = "Project members could not be loaded. Confirm your access and retry.";
+                workspaceLoad.Error =
+                    "The workspace list could not be loaded completely.";
                 return;
             }
 
-            if (detailsVersion == projectDetailsVersion &&
-                requestVersion == projectMembersRequestVersion)
-            {
-                projectMembersPage = response;
-            }
+            result.AddRange(response.Items);
         }
-        catch (HttpRequestException)
+
+        workspaces = result
+            .OrderBy(workspace => workspace.Name)
+            .ToList();
+    }
+    catch (HttpRequestException)
+    {
+        workspaceLoad.Error =
+            "The workspace service could not be reached.";
+    }
+    catch (JsonException)
+    {
+        workspaceLoad.Error =
+            "The workspace service returned an invalid response.";
+    }
+    finally
+    {
+        workspaceLoad.IsLoading = false;
+    }
+}
+
+// ---------------------------------------------------------
+// Project list
+// ---------------------------------------------------------
+
+private async Task LoadProjectsAsync(int page)
+{
+    var version = ++projectRequestVersion;
+
+    projectList.CurrentPage = page;
+    projectList.IsLoading = true;
+    projectList.Error = null;
+
+    try
+    {
+        var request = new ProjectQueryRequest
         {
-            if (detailsVersion == projectDetailsVersion &&
-                requestVersion == projectMembersRequestVersion)
-            {
-                projectMembersPage = null;
-                projectMembersError = "The project member service could not be reached.";
-            }
+            Page = page,
+            PageSize = projectList.PageSize,
+            Search = string.IsNullOrWhiteSpace(projectSearch)
+                ? null
+                : projectSearch,
+            WorkspaceId = Guid.TryParse(workspaceFilter, out var workspaceId)
+                ? workspaceId
+                : null,
+            Status = Enum.TryParse<ProjectStatus>(
+                statusFilter,
+                out var status)
+                ? status
+                : null
+        };
+
+        var response = await ProjectApiService.GetAsync(request);
+
+        if (version != projectRequestVersion)
+        {
+            return;
         }
-        catch (JsonException)
+
+        if (response is null)
         {
-            if (detailsVersion == projectDetailsVersion &&
-                requestVersion == projectMembersRequestVersion)
-            {
-                projectMembersPage = null;
-                projectMembersError = "The project member service returned an invalid response.";
-            }
+            projectList.Data = null;
+            projectList.Error =
+                "Projects could not be loaded. Confirm your Admin access and retry.";
+            return;
         }
-        finally
+
+        projectList.Data = response;
+
+        if (selectedProject is not null)
         {
-            if (detailsVersion == projectDetailsVersion &&
-                requestVersion == projectMembersRequestVersion)
-            {
-                isLoadingProjectMembers = false;
-            }
+            selectedProject = response.Items.FirstOrDefault(
+                project => project.ProjectId == selectedProject.ProjectId)
+                ?? selectedProject;
         }
     }
-
-    private async Task LoadProjectBoardsAsync(long detailsVersion, ProjectResponse project)
+    catch (HttpRequestException)
     {
-        isLoadingProjectBoards = true;
-        projectBoardsError = null;
-        try
+        if (version == projectRequestVersion)
         {
-            var firstPage = await BoardApiService.GetAsync(
+            projectList.Data = null;
+            projectList.Error =
+                "The project service could not be reached.";
+        }
+    }
+    catch (JsonException)
+    {
+        if (version == projectRequestVersion)
+        {
+            projectList.Data = null;
+            projectList.Error =
+                "The project service returned an invalid response.";
+        }
+    }
+    finally
+    {
+        if (version == projectRequestVersion)
+        {
+            projectList.IsLoading = false;
+        }
+    }
+}
+
+private async Task HandleProjectSearchChanged(string? value)
+{
+    projectSearch = value?.Trim();
+    await DebounceProjectFiltersAsync();
+}
+
+private Task HandleWorkspaceFilterChanged() =>
+    LoadProjectsAsync(1);
+
+private Task HandleStatusFilterChanged() =>
+    LoadProjectsAsync(1);
+    private Task DebounceProjectFiltersAsync( )
+    {
+
+        return projectSearchDebounce.ExecuteAsync(
+            () => LoadProjectsAsync(1));
+    }
+
+private async Task ClearFilters()
+{
+    projectSearch = null;
+    workspaceFilter = null;
+    statusFilter = null;
+
+    projectSearchDebounce?.Cancel();
+
+    await LoadProjectsAsync(1);
+}
+
+// ---------------------------------------------------------
+// Project form
+// ---------------------------------------------------------
+
+private void OpenCreateForm()
+{
+    isEditingProject = false;
+    editingProject = null;
+
+    ResetManagerCandidates();
+
+    managerSearch = null;
+    projectFormError = null;
+    workspaceSelectionError = null;
+    managerSelectionError = null;
+
+    createRequest = NewCreateRequest();
+    showProjectForm = true;
+}
+
+private void OpenEditForm(ProjectResponse project)
+{
+    isEditingProject = true;
+    editingProject = project;
+
+    ResetManagerCandidates();
+
+    managerSelectionError = null;
+    projectFormError = null;
+    managerSearch = null;
+
+    updateRequest = new UpdateProjectRequest
+    {
+        Name = project.Name,
+        Description = project.Description,
+        Status = project.Status,
+        StartDate = project.StartDate,
+        EndDate = project.EndDate
+    };
+
+    showProjectForm = true;
+}
+
+private void CloseProjectForm()
+{
+    if (isSubmitting)
+    {
+        return;
+    }
+
+    showProjectForm = false;
+    projectFormError = null;
+    workspaceSelectionError = null;
+    managerSelectionError = null;
+    editingProject = null;
+}
+
+private async Task SaveProjectAsync()
+{
+    if (isSubmitting)
+    {
+        return;
+    }
+
+    projectFormError = null;
+    workspaceSelectionError = null;
+    managerSelectionError = null;
+
+    if (!isEditingProject && createRequest.WorkspaceId == Guid.Empty)
+    {
+        workspaceSelectionError = "Select a workspace.";
+        return;
+    }
+
+    var managerId = selectedManager?.UserId;
+
+    if (!isEditingProject && !managerId.HasValue)
+    {
+        managerSelectionError = "Select a Project Manager.";
+        return;
+    }
+
+    projectFormOperation.IsSubmitting = true;
+
+    try
+    {
+        if (isEditingProject)
+        {
+            if (editingProject is null)
+            {
+                projectFormError = "Select a project to edit.";
+                return;
+            }
+
+            var updated = await ProjectApiService.UpdateAsync(
+                editingProject.ProjectId,
+                new UpdateProjectRequest
+                {
+                    Name = updateRequest.Name,
+                    Description = updateRequest.Description,
+                    ManagerId = managerId,
+                    Status = updateRequest.Status,
+                    StartDate = updateRequest.StartDate,
+                    EndDate = updateRequest.EndDate
+                });
+
+            if (updated is null)
+            {
+                projectFormError =
+                    "The project was not updated. Check the API message and retry.";
+                return;
+            }
+
+            showProjectForm = false;
+            selectedProject = updated;
+
+            ToastService.Success(
+                $"Project \"{updated.Name}\" updated.");
+
+            await LoadProjectsAsync(projectList.CurrentPage);
+            await LoadProjectDetailsAsync(updated);
+        }
+        else
+        {
+            var created = await ProjectApiService.CreateAsync(
+                new CreateProjectRequest
+                {
+                    Name = createRequest.Name,
+                    Description = createRequest.Description,
+                    WorkspaceId = createRequest.WorkspaceId,
+                    ManagerId = managerId,
+                    StartDate = createRequest.StartDate,
+                    EndDate = createRequest.EndDate
+                });
+
+            if (created is null)
+            {
+                projectFormError =
+                    "The project was not created. Review the API error notification and retry.";
+                return;
+            }
+
+            showProjectForm = false;
+
+            ToastService.Success(
+                $"Project \"{created.Name}\" created.");
+
+            await LoadProjectsAsync(1);
+            await OpenProjectDetailsAsync(created);
+        }
+    }
+    catch (HttpRequestException)
+    {
+        projectFormError =
+            "The project service could not be reached.";
+    }
+    catch (JsonException)
+    {
+        projectFormError =
+            "The project service returned an invalid response.";
+    }
+    finally
+    {
+        projectFormOperation.IsSubmitting = false;
+    }
+}
+
+// ---------------------------------------------------------
+// Project details
+// ---------------------------------------------------------
+
+private async Task OpenProjectDetailsAsync(ProjectResponse project)
+{
+    ProjectResponse? fullProject;
+
+    try
+    {
+        fullProject =
+            await ProjectApiService.GetByIdAsync(project.ProjectId);
+    }
+    catch (HttpRequestException)
+    {
+        ToastService.Error(
+            "The project service could not be reached.");
+        return;
+    }
+    catch (JsonException)
+    {
+        ToastService.Error(
+            "The project service returned an invalid response.");
+        return;
+    }
+
+    if (fullProject is null)
+    {
+        ToastService.Error(
+            "Project details could not be loaded.");
+        return;
+    }
+
+    await LoadProjectDetailsAsync(fullProject);
+}
+
+private async Task LoadProjectDetailsAsync(ProjectResponse project)
+{
+    memberCandidateVersion++;
+
+    memberCandidateSearchDebounce?.Cancel();
+
+    selectedProject = project;
+
+    projectMembers.Data = null;
+    projectMembers.Error = null;
+    projectMembers.CurrentPage = 1;
+    projectMembers.IsLoading = false;
+
+    projectBoards = null;
+    projectBoardsLoad.Error = null;
+    projectBoardsLoad.IsLoading = false;
+
+    memberOperation.Error = null;
+
+    memberCandidates.Data = null;
+    memberCandidates.Error = null;
+    memberCandidates.CurrentPage = 1;
+    memberCandidates.IsLoading = false;
+
+    memberCandidateSearch = null;
+    memberSearch = null;
+    pendingRemovalUserId = null;
+
+    memberCandidateSearchDebounce?.Cancel();
+
+    var version = ++projectDetailsVersion;
+
+    await Task.WhenAll(
+        LoadProjectMembersAsync(version, project.ProjectId, 1),
+        LoadProjectBoardsAsync(version, project));
+}
+
+private Task RetryProjectMembersAsync() =>
+    selectedProject is null
+        ? Task.CompletedTask
+        : LoadProjectMembersAsync(
+            projectDetailsVersion,
+            selectedProject.ProjectId,
+            projectMembers.CurrentPage);
+
+private Task LoadProjectMemberPageAsync(int page) =>
+    selectedProject is null
+        ? Task.CompletedTask
+        : LoadProjectMembersAsync(
+            projectDetailsVersion,
+            selectedProject.ProjectId,
+            page);
+
+private Task RetryProjectBoardsAsync() =>
+    selectedProject is null
+        ? Task.CompletedTask
+        : LoadProjectBoardsAsync(
+            projectDetailsVersion,
+            selectedProject);
+
+private void CloseProjectDetails()
+{
+    projectDetailsVersion++;
+    projectMembersRequestVersion++;
+
+    selectedProject = null;
+
+    projectMembers.Data = null;
+    projectMembers.Error = null;
+    projectMembers.CurrentPage = 1;
+    projectMembers.IsLoading = false;
+
+    projectBoards = null;
+    projectBoardsLoad.Error = null;
+    projectBoardsLoad.IsLoading = false;
+
+    memberCandidates.Data = null;
+    memberCandidates.Error = null;
+    memberCandidates.CurrentPage = 1;
+    memberCandidates.IsLoading = false;
+
+    pendingRemovalUserId = null;
+
+    memberCandidateSearchDebounce?.Cancel();
+    memberCandidateVersion++;
+}
+
+// ---------------------------------------------------------
+// Manager candidates
+// ---------------------------------------------------------
+
+private void ResetManagerCandidates()
+{
+    managerCandidateVersion++;
+
+    managerSearchDebounce?.Dispose();
+
+    selectedManager = null;
+
+    managerCandidates.Data = null;
+    managerCandidates.Error = null;
+    managerCandidates.CurrentPage = 1;
+    managerCandidates.IsLoading = false;
+}
+
+    private Task HandleManagerSearchChanged(string? value)
+    {
+        managerSearch = value?.Trim();
+
+        return managerSearchDebounce.ExecuteAsync(
+            () => LoadManagerCandidatesAsync(1));
+    }
+private async Task LoadManagerCandidatesAsync(int page)
+{
+    var version = ++managerCandidateVersion;
+
+    managerCandidates.CurrentPage = page;
+    managerCandidates.IsLoading = true;
+    managerCandidates.Error = null;
+
+    try
+    {
+        var response = await UserDirectoryApiService.GetAsync(
+            new PagedSearchRequest
+            {
+                Page = page,
+                PageSize = managerCandidates.PageSize,
+                Search = string.IsNullOrWhiteSpace(managerSearch)
+                    ? null
+                    : managerSearch
+            });
+
+        if (version != managerCandidateVersion)
+        {
+            return;
+        }
+
+        if (response is null)
+        {
+            managerCandidates.Data = null;
+            managerCandidates.Error =
+                "The account directory could not be loaded.";
+            return;
+        }
+
+        managerCandidates.Data = response;
+    }
+    catch (HttpRequestException)
+    {
+        if (version == managerCandidateVersion)
+        {
+            managerCandidates.Data = null;
+            managerCandidates.Error =
+                "The account directory could not be reached.";
+        }
+    }
+    catch (JsonException)
+    {
+        if (version == managerCandidateVersion)
+        {
+            managerCandidates.Data = null;
+            managerCandidates.Error =
+                "The account directory returned an invalid response.";
+        }
+    }
+    finally
+    {
+        if (version == managerCandidateVersion)
+        {
+            managerCandidates.IsLoading = false;
+        }
+    }
+}
+
+private void SelectManager(UserDirectoryResponse manager)
+{
+    selectedManager = manager;
+    managerSelectionError = null;
+}
+
+private void ClearSelectedManager()
+{
+    selectedManager = null;
+}
+
+// ---------------------------------------------------------
+// Project members
+// ---------------------------------------------------------
+
+private async Task LoadProjectMembersAsync(
+    long detailsVersion,
+    Guid projectId,
+    int page)
+{
+    var requestVersion = ++projectMembersRequestVersion;
+
+    projectMembers.CurrentPage = page;
+    projectMembers.IsLoading = true;
+    projectMembers.Error = null;
+
+    try
+    {
+        var response = await ProjectApiService.GetMembersAsync(
+            projectId,
+            new PagedSearchRequest
+            {
+                Page = page,
+                PageSize = projectMembers.PageSize,
+                Search = string.IsNullOrWhiteSpace(memberSearch)
+                    ? null
+                    : memberSearch
+            });
+
+        if (detailsVersion != projectDetailsVersion ||
+            requestVersion != projectMembersRequestVersion)
+        {
+            return;
+        }
+
+        if (response is null)
+        {
+            projectMembers.Data = null;
+            projectMembers.Error =
+                "Project members could not be loaded. Confirm your access and retry.";
+            return;
+        }
+
+        projectMembers.Data = response;
+    }
+    catch (HttpRequestException)
+    {
+        if (detailsVersion == projectDetailsVersion &&
+            requestVersion == projectMembersRequestVersion)
+        {
+            projectMembers.Data = null;
+            projectMembers.Error =
+                "The project member service could not be reached.";
+        }
+    }
+    catch (JsonException)
+    {
+        if (detailsVersion == projectDetailsVersion &&
+            requestVersion == projectMembersRequestVersion)
+        {
+            projectMembers.Data = null;
+            projectMembers.Error =
+                "The project member service returned an invalid response.";
+        }
+    }
+    finally
+    {
+        if (detailsVersion == projectDetailsVersion &&
+            requestVersion == projectMembersRequestVersion)
+        {
+            projectMembers.IsLoading = false;
+        }
+    }
+}
+
+// ---------------------------------------------------------
+// Project boards
+// ---------------------------------------------------------
+
+private async Task LoadProjectBoardsAsync(
+    long detailsVersion,
+    ProjectResponse project)
+{
+    projectBoardsLoad.IsLoading = true;
+    projectBoardsLoad.Error = null;
+
+    try
+    {
+        var firstPage = await BoardApiService.GetAsync(
+            new BoardQueryRequest
+            {
+                WorkspaceId = project.WorkspaceId,
+                Page = 1,
+                PageSize = ResourcePageSize
+            });
+
+        if (detailsVersion != projectDetailsVersion)
+        {
+            return;
+        }
+
+        if (firstPage is null)
+        {
+            projectBoards = null;
+            projectBoardsLoad.Error =
+                "Project boards could not be loaded.";
+            return;
+        }
+
+        var boards = firstPage.Items.ToList();
+
+        for (var page = 2; page <= firstPage.TotalPages; page++)
+        {
+            var response = await BoardApiService.GetAsync(
                 new BoardQueryRequest
                 {
                     WorkspaceId = project.WorkspaceId,
-                    Page = 1,
+                    Page = page,
                     PageSize = ResourcePageSize
                 });
+
             if (detailsVersion != projectDetailsVersion)
             {
                 return;
             }
 
-            if (firstPage is null)
-            {
-                projectBoards = null;
-                projectBoardsError = "Project boards could not be loaded.";
-                return;
-            }
-
-            var boards = firstPage.Items.ToList();
-            for (var page = 2; page <= firstPage.TotalPages; page++)
-            {
-                var response = await BoardApiService.GetAsync(
-                    new BoardQueryRequest
-                    {
-                        WorkspaceId = project.WorkspaceId,
-                        Page = page,
-                        PageSize = ResourcePageSize
-                    });
-                if (detailsVersion != projectDetailsVersion)
-                {
-                    return;
-                }
-
-                if (response is null)
-                {
-                    projectBoards = null;
-                    projectBoardsError = "Workspace boards could not be fully loaded. Partial results are withheld.";
-                    return;
-                }
-
-                boards.AddRange(response.Items);
-            }
-
-            if (detailsVersion == projectDetailsVersion)
-            {
-                projectBoards = boards
-                    .Where(board =>
-                        board.ProjectId == project.ProjectId &&
-                        board.WorkspaceId == project.WorkspaceId)
-                    .OrderBy(board => board.Name)
-                    .ToList();
-            }
-        }
-        catch (HttpRequestException)
-        {
-            if (detailsVersion == projectDetailsVersion)
-            {
-                projectBoards = null;
-                projectBoardsError = "The board service could not be reached.";
-            }
-        }
-        catch (JsonException)
-        {
-            if (detailsVersion == projectDetailsVersion)
-            {
-                projectBoards = null;
-                projectBoardsError = "The board service returned an invalid response.";
-            }
-        }
-        finally
-        {
-            if (detailsVersion == projectDetailsVersion)
-            {
-                isLoadingProjectBoards = false;
-            }
-        }
-    }
-
-    private async Task HandleManagerSearchChanged(string? value)
-    {
-        managerSearch = value?.Trim();
-        managerSearchDebounce?.Cancel();
-        managerSearchDebounce?.Dispose();
-        managerSearchDebounce = new CancellationTokenSource();
-        var token = managerSearchDebounce.Token;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            if (!token.IsCancellationRequested)
-            {
-                await LoadManagerCandidatesAsync(1);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
-    }
-
-    private async Task LoadManagerCandidatesAsync(int page)
-    {
-        var version = ++managerCandidateVersion;
-        managerCandidatePage = page;
-        isLoadingManagerCandidates = true;
-        managerCandidateError = null;
-        try
-        {
-            var response = await UserDirectoryApiService.GetAsync(
-                new PagedSearchRequest
-                {
-                    Page = page,
-                    PageSize = DirectoryPageSize,
-                    Search = string.IsNullOrWhiteSpace(managerSearch) ? null : managerSearch
-                });
-            if (version != managerCandidateVersion)
-            {
-                return;
-            }
-
             if (response is null)
             {
-                managerCandidates = null;
-                managerCandidateError = "The account directory could not be loaded.";
+                projectBoards = null;
+                projectBoardsLoad.Error =
+                    "Workspace boards could not be fully loaded. Partial results are withheld.";
                 return;
             }
 
-            managerCandidates = response;
+            boards.AddRange(response.Items);
         }
-        catch (HttpRequestException)
+
+        if (detailsVersion == projectDetailsVersion)
         {
-            if (version == managerCandidateVersion)
-            {
-                managerCandidates = null;
-                managerCandidateError = "The account directory could not be reached.";
-            }
-        }
-        catch (JsonException)
-        {
-            if (version == managerCandidateVersion)
-            {
-                managerCandidates = null;
-                managerCandidateError = "The account directory returned an invalid response.";
-            }
-        }
-        finally
-        {
-            if (version == managerCandidateVersion)
-            {
-                isLoadingManagerCandidates = false;
-            }
+            projectBoards = boards
+                .Where(board =>
+                    board.ProjectId == project.ProjectId &&
+                    board.WorkspaceId == project.WorkspaceId)
+                .OrderBy(board => board.Name)
+                .ToList();
         }
     }
-
-    private void SelectManager(UserDirectoryResponse manager)
+    catch (HttpRequestException)
     {
-        selectedManager = manager;
-        managerSelectionError = null;
+        if (detailsVersion == projectDetailsVersion)
+        {
+            projectBoards = null;
+            projectBoardsLoad.Error =
+                "The board service could not be reached.";
+        }
     }
-
-    private void ClearSelectedManager()
+    catch (JsonException)
     {
-        selectedManager = null;
+        if (detailsVersion == projectDetailsVersion)
+        {
+            projectBoards = null;
+            projectBoardsLoad.Error =
+                "The board service returned an invalid response.";
+        }
     }
+    finally
+    {
+        if (detailsVersion == projectDetailsVersion)
+        {
+            projectBoardsLoad.IsLoading = false;
+        }
+    }
+}
 
-    private async Task HandleMemberCandidateSearchChanged(string? value)
+// ---------------------------------------------------------
+// Member candidates
+// ---------------------------------------------------------
+    private Task HandleMemberCandidateSearchChanged(string? value)
     {
         memberCandidateSearch = value?.Trim();
-        memberCandidateSearchDebounce?.Cancel();
-        memberCandidateSearchDebounce?.Dispose();
-        memberCandidateSearchDebounce = new CancellationTokenSource();
-        var token = memberCandidateSearchDebounce.Token;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            if (!token.IsCancellationRequested)
-            {
-                await LoadMemberCandidatesAsync(1);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
+
+        return memberCandidateSearchDebounce.ExecuteAsync(
+            () => LoadMemberCandidatesAsync(1));
     }
 
-    private async Task LoadMemberCandidatesAsync(int page)
+
+private async Task LoadMemberCandidatesAsync(int page)
+{
+    var version = ++memberCandidateVersion;
+
+    memberCandidates.CurrentPage = page;
+    memberCandidates.IsLoading = true;
+    memberCandidates.Error = null;
+
+    try
     {
-        var version = ++memberCandidateVersion;
-        memberCandidatePage = page;
-        isLoadingMemberCandidates = true;
-        memberCandidateError = null;
-        try
-        {
-            var response = await UserDirectoryApiService.GetAsync(
-                new PagedSearchRequest
-                {
-                    Page = page,
-                    PageSize = DirectoryPageSize,
-                    Search = string.IsNullOrWhiteSpace(memberCandidateSearch) ? null : memberCandidateSearch
-                });
-            if (version != memberCandidateVersion)
+        var response = await UserDirectoryApiService.GetAsync(
+            new PagedSearchRequest
             {
-                return;
-            }
+                Page = page,
+                PageSize = memberCandidates.PageSize,
+                Search = string.IsNullOrWhiteSpace(memberCandidateSearch)
+                    ? null
+                    : memberCandidateSearch
+            });
 
-            if (response is null)
-            {
-                memberCandidates = null;
-                memberCandidateError = "The account directory could not be loaded.";
-                return;
-            }
-
-            memberCandidates = response;
-        }
-        catch (HttpRequestException)
-        {
-            if (version == memberCandidateVersion)
-            {
-                memberCandidates = null;
-                memberCandidateError = "The account directory could not be reached.";
-            }
-        }
-        catch (JsonException)
-        {
-            if (version == memberCandidateVersion)
-            {
-                memberCandidates = null;
-                memberCandidateError = "The account directory returned an invalid response.";
-            }
-        }
-        finally
-        {
-            if (version == memberCandidateVersion)
-            {
-                isLoadingMemberCandidates = false;
-            }
-        }
-    }
-
-    private async Task AddProjectMemberAsync(UserDirectoryResponse candidate)
-    {
-        if (selectedProject is null || isSubmitting)
+        if (version != memberCandidateVersion)
         {
             return;
         }
 
-        memberOperationError = null;
-        if (projectMembersPage?.Items.Any(member => member.UserId == candidate.UserId) == true)
+        if (response is null)
         {
-            ToastService.Warning("This account is already a project member.");
+            memberCandidates.Data = null;
+            memberCandidates.Error =
+                "The account directory could not be loaded.";
             return;
         }
 
-        isSubmitting = true;
-        try
+        memberCandidates.Data = response;
+    }
+    catch (HttpRequestException)
+    {
+        if (version == memberCandidateVersion)
         {
-            var added = await ProjectApiService.AddMemberAsync(
-                selectedProject.ProjectId,
-                new AddProjectMemberRequest { UserId = candidate.UserId });
-            if (added is null)
+            memberCandidates.Data = null;
+            memberCandidates.Error =
+                "The account directory could not be reached.";
+        }
+    }
+    catch (JsonException)
+    {
+        if (version == memberCandidateVersion)
+        {
+            memberCandidates.Data = null;
+            memberCandidates.Error =
+                "The account directory returned an invalid response.";
+        }
+    }
+    finally
+    {
+        if (version == memberCandidateVersion)
+        {
+            memberCandidates.IsLoading = false;
+        }
+    }
+}
+
+private async Task AddProjectMemberAsync(
+    UserDirectoryResponse candidate)
+{
+    if (selectedProject is null || isSubmitting)
+    {
+        return;
+    }
+
+    memberOperation.Error = null;
+
+    if (projectMembers.Data?.Items.Any(
+            member => member.UserId == candidate.UserId) == true)
+    {
+        ToastService.Warning(
+            "This account is already a project member.");
+        return;
+    }
+
+    memberOperation.IsSubmitting = true;
+
+    try
+    {
+        var added = await ProjectApiService.AddMemberAsync(
+            selectedProject.ProjectId,
+            new AddProjectMemberRequest
             {
-                memberOperationError = "Membership was not added. The backend accepts only eligible Employee accounts.";
-                return;
-            }
+                UserId = candidate.UserId
+            });
 
-            await LoadProjectMembersAsync(projectDetailsVersion, selectedProject.ProjectId, 1);
-        }
-        catch (HttpRequestException)
+        if (added is null)
         {
-            memberOperationError = "The project service could not be reached. Membership was not confirmed.";
-        }
-        catch (JsonException)
-        {
-            memberOperationError = "The project service returned an invalid response. Refresh membership to confirm the result.";
-        }
-        finally
-        {
-            isSubmitting = false;
-        }
-    }
-
-    private async Task HandleMemberSearchChanged(string? value)
-    {
-        memberSearch = value?.Trim();
-        memberSearchDebounce?.Cancel();
-        memberSearchDebounce?.Dispose();
-        memberSearchDebounce = new CancellationTokenSource();
-        var token = memberSearchDebounce.Token;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            if (!token.IsCancellationRequested && selectedProject is not null)
-            {
-                await LoadProjectMembersAsync(
-                    projectDetailsVersion,
-                    selectedProject.ProjectId,
-                    1);
-            }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
-    }
-
-    private void RequestMemberRemoval(Guid userId)
-    {
-        pendingRemovalUserId = userId;
-    }
-
-    private void CancelMemberRemoval()
-    {
-        if (!isSubmitting)
-        {
-            pendingRemovalUserId = null;
-        }
-    }
-
-    private async Task RemoveProjectMemberAsync(ProjectMemberResponse member)
-    {
-        if (selectedProject is null || isSubmitting)
-        {
+            memberOperation.Error =
+                "Membership was not added. The backend accepts only eligible Employee accounts.";
             return;
         }
 
-        isSubmitting = true;
-        memberOperationError = null;
-        try
-        {
-            var removed = await ProjectApiService.RemoveMemberAsync(
-                selectedProject.ProjectId,
-                member.UserId);
-            if (!removed)
-            {
-                memberOperationError = "Membership was not removed. Associated board memberships or task dependencies may need to be resolved first.";
-                return;
-            }
+        await LoadProjectMembersAsync(
+            projectDetailsVersion,
+            selectedProject.ProjectId,
+            1);
+    }
+    catch (HttpRequestException)
+    {
+        memberOperation.Error =
+            "The project service could not be reached. Membership was not confirmed.";
+    }
+    catch (JsonException)
+    {
+        memberOperation.Error =
+            "The project service returned an invalid response. Refresh membership to confirm the result.";
+    }
+    finally
+    {
+        memberOperation.IsSubmitting = false;
+    }
+}
 
-            pendingRemovalUserId = null;
-            var page = projectMembersPage?.Items.Count == 1 && memberListPage > 1
-                ? memberListPage - 1
-                : memberListPage;
-            await LoadProjectMembersAsync(projectDetailsVersion, selectedProject.ProjectId, page);
-        }
-        catch (HttpRequestException)
-        {
-            memberOperationError = "The project service could not be reached. Membership was not confirmed as removed.";
-        }
-        finally
-        {
-            isSubmitting = false;
-        }
+// ---------------------------------------------------------
+// Member search and removal
+// ---------------------------------------------------------
+
+private Task HandleMemberSearchChanged(string? value)
+{
+    memberSearch = value?.Trim();
+
+    var project = selectedProject;
+    var detailsVersion = projectDetailsVersion;
+
+    return memberSearchDebounce.ExecuteAsync(async () =>
+    {
+        if (project is null)
+            return;
+
+        await LoadProjectMembersAsync(
+            detailsVersion,
+            project.ProjectId,
+            1);
+    });
+}
+
+private void RequestMemberRemoval(Guid userId)
+{
+    pendingRemovalUserId = userId;
+}
+
+private void CancelMemberRemoval()
+{
+    if (!isSubmitting)
+    {
+        pendingRemovalUserId = null;
+    }
+}
+
+private async Task RemoveProjectMemberAsync(
+    ProjectMemberResponse member)
+{
+    if (selectedProject is null || isSubmitting)
+    {
+        return;
     }
 
-    private void RequestProjectDeletion(ProjectResponse project)
-    {
-        projectPendingDeletion = project;
-        deleteProjectError = null;
-    }
+    memberOperation.IsSubmitting = true;
+    memberOperation.Error = null;
 
-    private void CancelProjectDeletion()
+    try
     {
-        if (!isSubmitting)
-        {
-            projectPendingDeletion = null;
-            deleteProjectError = null;
-        }
-    }
+        var removed = await ProjectApiService.RemoveMemberAsync(
+            selectedProject.ProjectId,
+            member.UserId);
 
-    private async Task DeleteProjectAsync()
-    {
-        if (projectPendingDeletion is null || isSubmitting)
+        if (!removed)
         {
+            memberOperation.Error =
+                "Membership was not removed. Associated board memberships or task dependencies may need to be resolved first.";
             return;
         }
 
-        var project = projectPendingDeletion;
-        isSubmitting = true;
-        deleteProjectError = null;
-        try
-        {
-            var deleted = await ProjectApiService.DeleteAsync(project.ProjectId);
-            if (!deleted)
-            {
-                deleteProjectError = "The project was not deleted. Associated boards or members may block deletion; none were removed.";
-                return;
-            }
+        pendingRemovalUserId = null;
 
-            projectPendingDeletion = null;
-            if (selectedProject?.ProjectId == project.ProjectId)
-            {
-                CloseProjectDetails();
-            }
+        var targetPage =
+            projectMembers.Data?.Items.Count == 1 &&
+            projectMembers.CurrentPage > 1
+                ? projectMembers.CurrentPage - 1
+                : projectMembers.CurrentPage;
 
-            ToastService.Success($"Project \"{project.Name}\" deleted.");
-            var targetPage = projectPage?.Items.Count == 1 && currentProjectPage > 1
-                ? currentProjectPage - 1
-                : currentProjectPage;
-            await LoadProjectsAsync(targetPage);
-        }
-        catch (HttpRequestException)
-        {
-            deleteProjectError = "The project service could not be reached. The project was not deleted.";
-        }
-        catch (JsonException)
-        {
-            deleteProjectError = "The project service returned an invalid response. Refresh the list to confirm the result.";
-        }
-        finally
-        {
-            isSubmitting = false;
-        }
+        await LoadProjectMembersAsync(
+            projectDetailsVersion,
+            selectedProject.ProjectId,
+            targetPage);
+    }
+    catch (HttpRequestException)
+    {
+        memberOperation.Error =
+            "The project service could not be reached. Membership was not confirmed as removed.";
+    }
+    catch (JsonException)
+    {
+        memberOperation.Error =
+            "The project service returned an invalid response. Refresh membership to confirm the result.";
+    }
+    finally
+    {
+        memberOperation.IsSubmitting = false;
+    }
+}
+
+// ---------------------------------------------------------
+// Project deletion
+// ---------------------------------------------------------
+
+private void RequestProjectDeletion(ProjectResponse project)
+{
+    projectPendingDeletion = project;
+    deleteProjectOperation.Error = null;
+}
+
+private void CancelProjectDeletion()
+{
+    if (!isSubmitting)
+    {
+        projectPendingDeletion = null;
+        deleteProjectOperation.Error = null;
+    }
+}
+
+private async Task DeleteProjectAsync()
+{
+    if (projectPendingDeletion is null || isSubmitting)
+    {
+        return;
     }
 
-    private static CreateProjectRequest NewCreateRequest() => new()
-    {
-        StartDate = DateTime.Today,
-        EndDate = DateTime.Today.AddDays(30)
-    };
+    var project = projectPendingDeletion;
 
-    private static UpdateProjectRequest NewUpdateRequest() => new()
-    {
-        StartDate = DateTime.Today,
-        EndDate = DateTime.Today.AddDays(30)
-    };
+    deleteProjectOperation.IsSubmitting = true;
+    deleteProjectOperation.Error = null;
 
-    private static string GetFullName(string firstName, string lastName)
+    try
     {
-        var fullName = $"{firstName} {lastName}".Trim();
-        return string.IsNullOrWhiteSpace(fullName) ? "Unnamed account" : fullName;
+        var deleted =
+            await ProjectApiService.DeleteAsync(project.ProjectId);
+
+        if (!deleted)
+        {
+            deleteProjectOperation.Error =
+                "The project was not deleted. Associated boards or members may block deletion; none were removed.";
+            return;
+        }
+
+        projectPendingDeletion = null;
+
+        if (selectedProject?.ProjectId == project.ProjectId)
+        {
+            CloseProjectDetails();
+        }
+
+        ToastService.Success(
+            $"Project \"{project.Name}\" deleted.");
+
+        var targetPage =
+            projectList.Data?.Items.Count == 1 &&
+            projectList.CurrentPage > 1
+                ? projectList.CurrentPage - 1
+                : projectList.CurrentPage;
+
+        await LoadProjectsAsync(targetPage);
     }
+    catch (HttpRequestException)
+    {
+        deleteProjectOperation.Error =
+            "The project service could not be reached. The project was not deleted.";
+    }
+    catch (JsonException)
+    {
+        deleteProjectOperation.Error =
+            "The project service returned an invalid response. Refresh the list to confirm the result.";
+    }
+    finally
+    {
+        deleteProjectOperation.IsSubmitting = false;
+    }
+}
 
-    private static string GetProjectDate(ProjectResponse project) =>
-        (project.ModifiedAt ?? project.CreatedAt).ToLocalTime().ToString("MMM d, yyyy");
+// ---------------------------------------------------------
+// Request models and display helpers
+// ---------------------------------------------------------
 
-    private static string GetStatusLabel(ProjectStatus status) => status switch
+private static CreateProjectRequest NewCreateRequest() => new()
+{
+    StartDate = DateOnly.FromDateTime(DateTime.Today),
+    EndDate = DateOnly.FromDateTime(DateTime.Today).AddDays(30)
+};
+
+private static UpdateProjectRequest NewUpdateRequest() => new()
+{
+    StartDate = DateOnly.FromDateTime(DateTime.Today),
+    EndDate = DateOnly.FromDateTime(DateTime.Today).AddDays(30)
+};
+
+private static string GetFullName(
+    string firstName,
+    string lastName)
+{
+    var fullName = $"{firstName} {lastName}".Trim();
+
+    return string.IsNullOrWhiteSpace(fullName)
+        ? "Unnamed account"
+        : fullName;
+}
+
+private static string GetProjectDate(ProjectResponse project) =>
+    (project.ModifiedAt ?? project.CreatedAt)
+        .ToLocalTime()
+        .ToString("MMM d, yyyy");
+
+private static string GetStatusLabel(ProjectStatus status) =>
+    status switch
     {
         ProjectStatus.Active => "Active",
         ProjectStatus.Completed => "Completed",
@@ -1603,7 +1916,8 @@
         _ => status.ToString()
     };
 
-    private static string GetStatusClass(ProjectStatus status) => status switch
+private static string GetStatusClass(ProjectStatus status) =>
+    status switch
     {
         ProjectStatus.Active => "status-active",
         ProjectStatus.Completed => "status-completed",
@@ -1611,15 +1925,19 @@
         _ => "status-unknown"
     };
 
-    public void Dispose()
-    {
-        projectSearchDebounce?.Cancel();
-        projectSearchDebounce?.Dispose();
-        managerSearchDebounce?.Cancel();
-        managerSearchDebounce?.Dispose();
-        memberCandidateSearchDebounce?.Cancel();
-        memberCandidateSearchDebounce?.Dispose();
-        memberSearchDebounce?.Cancel();
-        memberSearchDebounce?.Dispose();
-    }
+// ---------------------------------------------------------
+// Component disposal
+// ---------------------------------------------------------
+
+public void Dispose()
+{
+    projectSearchDebounce?.Cancel();
+    projectSearchDebounce?.Dispose();
+
+    managerSearchDebounce?.Dispose();
+
+    memberCandidateSearchDebounce?.Dispose();
+
+    memberSearchDebounce?.Dispose();
+}
 }

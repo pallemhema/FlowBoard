@@ -1,10 +1,9 @@
+/* =========================================
+   Manager Boards Page
+========================================= */
+
 .manager-boards {
   max-width: 1540px;
-}
-
-.manager-boards-search {
-  max-width: 34rem;
-  margin-bottom: 1.25rem;
 }
 
 .manager-boards-loading {
@@ -29,13 +28,6 @@
   background: #fff8f7;
   font-size: 0.84rem;
   line-height: 1.5;
-}
-
-.manager-boards-results-heading {
-  margin-bottom: 0.7rem;
-  color: var(--flowboard-ink);
-  font-size: 0.84rem;
-  font-weight: 650;
 }
 
 .manager-board-grid {

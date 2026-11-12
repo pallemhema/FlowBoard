@@ -1,0 +1,56 @@
+<section class="@CssClass" aria-labelledby="@TitleId">
+
+    <div class="data-list-panel-heading">
+        <div>
+            <h2 id="@TitleId">@Title</h2>
+
+            @if (!string.IsNullOrWhiteSpace(Description))
+            {
+                <p>@Description</p>
+            }
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(CountText))
+        {
+            <span class="data-list-count">
+                @CountText
+            </span>
+        }
+    </div>
+
+    @if (Toolbar is not null)
+    {
+        @Toolbar
+    }
+
+    @if (ChildContent is not null)
+    {
+        <div class="data-list-panel-content">
+            @ChildContent
+        </div>
+    }
+
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter]
+    public string TitleId { get; set; } = "data-list-title";
+
+    [Parameter]
+    public string? Description { get; set; }
+
+    [Parameter]
+    public string? CountText { get; set; }
+
+    [Parameter]
+    public string CssClass { get; set; } = "data-list-panel";
+
+    [Parameter]
+    public RenderFragment? Toolbar { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

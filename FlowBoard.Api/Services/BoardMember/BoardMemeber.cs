@@ -73,47 +73,48 @@ public class BoardMemberService : IBoardMemberService
             throw new NotFoundException("User was not found.");
         }
 
+        if (!user.IsActive)
+        {
+            throw new ConflictException(
+                "Inactive users cannot be added as board members.");
+        }
+
         if (user.Role != UserRole.Employee)
         {
             throw new ValidationException(
                 "Only Employees can be added as board members.");
         }
 
-        var isEligibleForBoard = board.Purpose switch
-        {
-            Domain.Enums.BoardPurpose.Project =>
-                board.ProjectId.HasValue &&
-                await _dbContext.ProjectMembers.AnyAsync(
-                    member => member.ProjectId == board.ProjectId.Value &&
-                              member.UserId == user.Id,
-                    cancellationToken),
-            Domain.Enums.BoardPurpose.GeneralLearning =>
-                await _dbContext.WorkspaceMembers.AnyAsync(
-                    member => member.WorkspaceId == board.WorkspaceId &&
-                              member.UserId == user.Id,
-                    cancellationToken),
-            _ => false
-        };
+        var hasWorkspaceAccess =
+            await _dbContext.Workspaces.AnyAsync(
+                workspace => workspace.Id == board.WorkspaceId &&
+                             workspace.OwnerId == user.Id,
+                cancellationToken) ||
+            await _dbContext.WorkspaceMembers.AnyAsync(
+                member => member.WorkspaceId == board.WorkspaceId &&
+                          member.UserId == user.Id,
+                cancellationToken);
+
+        var isProjectMember = board.ProjectId.HasValue &&
+            await _dbContext.ProjectMembers.AnyAsync(
+                member => member.ProjectId == board.ProjectId.Value &&
+                          member.UserId == user.Id,
+                cancellationToken);
+
+        var isEligibleForBoard = hasWorkspaceAccess &&
+            (board.Purpose switch
+            {
+                Domain.Enums.BoardPurpose.Project => isProjectMember,
+                Domain.Enums.BoardPurpose.GeneralLearning => true,
+                _ => false
+            });
 
         if (!isEligibleForBoard)
         {
             throw new ConflictException(
                 board.Purpose == Domain.Enums.BoardPurpose.Project
-                    ? "The employee must be a member of the associated project."
-                    : "The employee must be a member of the board's workspace.");
-        }
-
-        if (string.Equals(
-                _currentUserService.Role,
-                nameof(UserRole.Manager),
-                StringComparison.Ordinal) &&
-            !await _dbContext.ManagerEmployees.AnyAsync(
-                relationship => relationship.ManagerId == _currentUserService.UserId &&
-                                relationship.EmployeeId == user.Id,
-                cancellationToken))
-        {
-            throw new ForbiddenException(
-                "Managers may add only employees assigned to them.");
+                    ? "The employee must have workspace access and be a member of the associated project."
+                    : "The employee must have access to the board's workspace.");
         }
 
         if (await _dbContext.BoardMembers.AnyAsync(
@@ -303,7 +304,7 @@ public class BoardMemberService : IBoardMemberService
         Guid userId,
         CancellationToken cancellationToken = default)
     {
-        var access = await _boardAuthorizationService.EnsureCanManageBoardAsync(
+        var access = await _boardAuthorizationService.EnsureCanDeleteBoardAsync(
             boardId,
             cancellationToken);
 

@@ -8,11 +8,11 @@ public interface IAuthApiService
     // LOGIN
     // ============================================================
 
-    Task<AuthenticationResult?> LoginAsync(
+    Task<AuthenticationAttemptResult?> LoginAsync(
         LoginRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<AuthenticationResult?> LoginBackendAsync(
+    Task<AuthenticationAttemptResult> LoginBackendAsync(
         LoginRequest request,
         CancellationToken cancellationToken = default);
 

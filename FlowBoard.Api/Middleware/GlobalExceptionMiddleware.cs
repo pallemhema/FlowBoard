@@ -54,7 +54,10 @@ public class GlobalExceptionMiddleware
             {
                 Code = appException.ErrorCode,
                 Message = appException.Message,
-                TraceId = context.TraceIdentifier
+                TraceId = context.TraceIdentifier,
+                Details = appException.Details is null
+                    ? null
+                    : JsonSerializer.SerializeToElement(appException.Details)
             },
 
             _ => new ErrorResponse

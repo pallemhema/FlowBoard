@@ -3,10 +3,7 @@
   max-width: 1540px;
 }
 
-.manager-projects-search[b-2fyder6s89] {
-  max-width: 34rem;
-  margin-bottom: 1.25rem;
-}
+
 
 .manager-projects-loading[b-2fyder6s89] {
   display: flex;
@@ -32,12 +29,7 @@
   line-height: 1.5;
 }
 
-.manager-projects-results-heading[b-2fyder6s89] {
-  margin-bottom: 0.7rem;
-  color: var(--flowboard-ink);
-  font-size: 0.84rem;
-  font-weight: 650;
-}
+
 
 .manager-project-grid[b-2fyder6s89] {
   display: grid;
@@ -215,20 +207,7 @@
   white-space: nowrap;
 }
 
-.manager-project-section-heading[b-2fyder6s89] {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
 
-.manager-project-section-heading h2[b-2fyder6s89] {
-  margin: 0;
-  color: var(--flowboard-ink);
-  font-size: 0.95rem;
-  font-weight: 700;
-}
 
 .manager-project-count[b-2fyder6s89] {
   color: var(--flowboard-muted);

@@ -1,14 +1,6 @@
 @page "/employee/dashboard"
-@attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
 
-@using System.Net.Http
-@using System.Text.Json
-@using FlowBoard.Shared.DTOs.Boards
-@using FlowBoard.Shared.DTOs.Common
-@using FlowBoard.Shared.DTOs.MyTasks
-@using FlowBoard.Shared.DTOs.Projects
-@using FlowBoard.Shared.Enums
-@using FlowBoard.Shared.DTOs.Workspaces
+@attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
 
 @inject ITaskApiService TaskApiService
 @inject IBoardApiService BoardApiService
@@ -18,118 +10,157 @@
 <PageTitle>Employee Dashboard | FlowBoard</PageTitle>
 
 <div class="page-shell employee-dashboard">
+
     <PageHeader Title="Dashboard"
                 Eyebrow="Your workspace"
                 Description="A focused view of your assigned tasks, upcoming deadlines, and accessible work." />
 
-    @if (isLoading)
+    @if (dashboardLoad.IsLoading)
     {
         <div class="employee-dashboard-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <span class="spinner-border spinner-border-sm text-primary"
+                  aria-hidden="true"></span>
             <span>Loading your work overview…</span>
         </div>
     }
 
+    @* Dashboard statistics *@
+
     <section class="employee-stat-grid" aria-label="Your work statistics">
+
         <DashboardStatCard Label="Assigned tasks"
                            Icon="bi-check2-square"
                            IconTone="stat-tone-indigo"
                            Value="@(taskSummary?.TotalCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@dashboardLoad.IsLoading"
                            IsUnavailable="@(taskSummary is null)"
-                           UnavailableReason="@taskSummaryError" />
+                           UnavailableReason="@taskSummaryLoad.Error" />
+
         <DashboardStatCard Label="Due next 7 days"
                            Icon="bi-calendar2-week"
                            IconTone="stat-tone-amber"
                            Value="@(upcomingTasks?.TotalCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@dashboardLoad.IsLoading"
                            IsUnavailable="@(upcomingTasks is null)"
-                           UnavailableReason="@upcomingTasksError" />
+                           UnavailableReason="@upcomingTasksLoad.Error" />
+
         <DashboardStatCard Label="Accessible boards"
                            Icon="bi-columns-gap"
                            IconTone="stat-tone-blue"
                            Value="@(boards?.TotalCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@dashboardLoad.IsLoading"
                            IsUnavailable="@(boards is null)"
-                           UnavailableReason="@boardsError" />
+                           UnavailableReason="@boardsLoad.Error" />
+
         <DashboardStatCard Label="My projects"
                            Icon="bi-kanban"
                            IconTone="stat-tone-violet"
                            Value="@(projects?.TotalCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@dashboardLoad.IsLoading"
                            IsUnavailable="@(projects is null)"
-                           UnavailableReason="@projectsError" />
+                           UnavailableReason="@projectsLoad.Error" />
+
         <DashboardStatCard Label="My workspaces"
                            Icon="bi-grid"
                            IconTone="stat-tone-green"
                            Value="@(workspaces?.TotalCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@dashboardLoad.IsLoading"
                            IsUnavailable="@(workspaces is null)"
-                           UnavailableReason="@workspacesError" />
+                           UnavailableReason="@workspacesLoad.Error" />
+
     </section>
 
-    <section class="employee-dashboard-panel" aria-labelledby="upcoming-tasks-title">
-        <div class="employee-panel-heading">
-            <div>
-                <p class="section-label mb-1">Stay ahead</p>
-                <h2 id="upcoming-tasks-title">Upcoming task deadlines</h2>
-            </div>
-            <span class="employee-panel-icon" aria-hidden="true">
-                <i class="bi bi-calendar-check"></i>
-            </span>
-        </div>
+    @* Upcoming tasks *@
 
-        @if (isLoading)
-        {
-            <div class="employee-inline-loading" role="status">
-                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-                <span>Loading upcoming tasks…</span>
-            </div>
-        }
-        else if (!string.IsNullOrWhiteSpace(upcomingTasksError))
-        {
-            <div class="employee-dashboard-error" role="alert">@upcomingTasksError</div>
-        }
-        else if (upcomingTasks is { Items.Count: 0 })
-        {
-            <EmptyState Title="No upcoming deadlines"
-                        Message="You have no assigned tasks due in the next 7 days." />
-        }
-        else if (upcomingTasks is not null)
-        {
-            <div class="employee-task-list">
-                @foreach (var task in upcomingTasks.Items)
-                {
-                    <article class="employee-task-row" @key="task.CardId">
-                        <div class="employee-task-copy">
-                            <h3>@task.Title</h3>
-                            <p>@task.ColumnName · @task.BoardName</p>
-                            <small>
-                                @task.WorkspaceName
-                                @if (!string.IsNullOrWhiteSpace(task.ProjectName))
-                                {
-                                    <span> · @task.ProjectName</span>
-                                }
-                            </small>
-                        </div>
-                        <div class="employee-task-meta">
-                            <span class="employee-priority employee-priority-@GetPriorityClass(task.Priority)">
-                                @GetPriorityLabel(task.Priority)
-                            </span>
-                            <time datetime="@task.DueDate?.ToString("O")">
-                                @task.DueDate?.ToLocalTime().ToString("MMM d")
-                            </time>
-                        </div>
-                    </article>
-                }
-            </div>
-        }
+    <DataListPanel Title="Upcoming task deadlines"
+                   TitleId="upcoming-tasks-title"
+                   Description="Stay ahead of your upcoming deadlines."
+                   CountText="@(upcomingTasks is not null &&
+                                !dashboardLoad.IsLoading &&
+                                upcomingTasksLoad.Error is null
+                       ? $"{upcomingTasks.TotalCount} {(upcomingTasks.TotalCount == 1 ? "task" : "tasks")}"
+                       : null)"
+                   CssClass="employee-dashboard-panel">
 
-        <p class="employee-dashboard-note">
-            Completion totals are omitted because the task API does not expose a reliable completed-status field.
-            The deadline list includes your assigned tasks with dates in this window.
-        </p>
-    </section>
+        <ChildContent>
+
+            @if (dashboardLoad.IsLoading)
+            {
+                <div class="employee-inline-loading" role="status">
+
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
+
+                    <span>Loading upcoming tasks…</span>
+
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(upcomingTasksLoad.Error))
+            {
+                <div class="employee-dashboard-error" role="alert">
+                    @upcomingTasksLoad.Error
+                </div>
+            }
+            else if (upcomingTasks is { Items.Count: 0 })
+            {
+                <EmptyState Title="No upcoming deadlines"
+                            Message="You have no assigned tasks due in the next 7 days." />
+            }
+            else if (upcomingTasks is not null)
+            {
+                <div class="employee-task-list">
+
+                    @foreach (var task in upcomingTasks.Items)
+                    {
+                        <article class="employee-task-row"
+                                 @key="task.CardId">
+
+                            <div class="employee-task-copy">
+
+                                <h3>@task.Title</h3>
+
+                                <p>
+                                    @task.ColumnName · @task.BoardName
+                                </p>
+
+                                <small>
+                                    @task.WorkspaceName
+
+                                    @if (!string.IsNullOrWhiteSpace(task.ProjectName))
+                                    {
+                                        <span> · @task.ProjectName</span>
+                                    }
+                                </small>
+
+                            </div>
+
+                            <div class="employee-task-meta">
+
+                                <span class="employee-priority employee-priority-@GetPriorityClass(task.Priority)">
+                                    @GetPriorityLabel(task.Priority)
+                                </span>
+
+                                <time datetime="@task.DueDate?.ToString("O")">
+                                    @task.DueDate?.ToLocalTime().ToString("MMM d")
+                                </time>
+
+                            </div>
+
+                        </article>
+                    }
+
+                </div>
+            }
+
+            <p class="employee-dashboard-note">
+                Completion totals are omitted because the task API does not expose a reliable completed-status field.
+                The deadline list includes your assigned tasks with dates in this window.
+            </p>
+
+        </ChildContent>
+
+    </DataListPanel>
+
 </div>
 
 @code {
@@ -139,15 +170,18 @@
     private PagedResponse<ProjectResponse>? projects;
     private PagedResponse<WorkspaceResponse>? workspaces;
 
-    private string? taskSummaryError;
-    private string? upcomingTasksError;
-    private string? boardsError;
-    private string? projectsError;
-    private string? workspacesError;
-    private bool isLoading = true;
+    private readonly AsyncOperationState dashboardLoad = new();
+
+    private readonly AsyncOperationState taskSummaryLoad = new();
+    private readonly AsyncOperationState upcomingTasksLoad = new();
+    private readonly AsyncOperationState boardsLoad = new();
+    private readonly AsyncOperationState projectsLoad = new();
+    private readonly AsyncOperationState workspacesLoad = new();
 
     protected override async Task OnInitializedAsync()
     {
+        dashboardLoad.IsLoading = true;
+
         try
         {
             await Task.WhenAll(
@@ -159,36 +193,52 @@
         }
         finally
         {
-            isLoading = false;
+            dashboardLoad.IsLoading = false;
         }
     }
 
     private async Task LoadTaskSummaryAsync()
     {
+        taskSummaryLoad.IsLoading = true;
+        taskSummaryLoad.Error = null;
+
         try
         {
             taskSummary = await TaskApiService.GetMyTasksAsync(
-                new MyTasksQueryRequest { Page = 1, PageSize = 1 });
+                new MyTasksQueryRequest
+                {
+                    Page = 1,
+                    PageSize = 1
+                });
+
             if (taskSummary is null)
             {
-                taskSummaryError = "Assigned task totals are unavailable.";
+                taskSummaryLoad.Error = "Assigned task totals are unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            taskSummaryError = "The task service could not be reached.";
+            taskSummaryLoad.Error = "The task service could not be reached.";
         }
         catch (JsonException)
         {
-            taskSummaryError = "The task service returned an invalid response.";
+            taskSummaryLoad.Error = "The task service returned an invalid response.";
+        }
+        finally
+        {
+            taskSummaryLoad.IsLoading = false;
         }
     }
 
     private async Task LoadUpcomingTasksAsync()
     {
+        upcomingTasksLoad.IsLoading = true;
+        upcomingTasksLoad.Error = null;
+
         try
         {
             var today = DateTime.UtcNow.Date;
+
             upcomingTasks = await TaskApiService.GetMyTasksAsync(
                 new MyTasksQueryRequest
                 {
@@ -197,81 +247,122 @@
                     DueDateFrom = today,
                     DueDateTo = today.AddDays(7)
                 });
+
             if (upcomingTasks is null)
             {
-                upcomingTasksError = "Upcoming task deadlines are unavailable.";
+                upcomingTasksLoad.Error = "Upcoming task deadlines are unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            upcomingTasksError = "The task service could not be reached.";
+            upcomingTasksLoad.Error = "The task service could not be reached.";
         }
         catch (JsonException)
         {
-            upcomingTasksError = "The task service returned an invalid response.";
+            upcomingTasksLoad.Error = "The task service returned an invalid response.";
+        }
+        finally
+        {
+            upcomingTasksLoad.IsLoading = false;
         }
     }
 
     private async Task LoadBoardsAsync()
     {
+        boardsLoad.IsLoading = true;
+        boardsLoad.Error = null;
+
         try
         {
             boards = await BoardApiService.GetAsync(
-                new BoardQueryRequest { Page = 1, PageSize = 1 });
+                new BoardQueryRequest
+                {
+                    Page = 1,
+                    PageSize = 1
+                });
+
             if (boards is null)
             {
-                boardsError = "Accessible board totals are unavailable.";
+                boardsLoad.Error = "Accessible board totals are unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            boardsError = "The board service could not be reached.";
+            boardsLoad.Error = "The board service could not be reached.";
         }
         catch (JsonException)
         {
-            boardsError = "The board service returned an invalid response.";
+            boardsLoad.Error = "The board service returned an invalid response.";
+        }
+        finally
+        {
+            boardsLoad.IsLoading = false;
         }
     }
 
     private async Task LoadProjectsAsync()
     {
+        projectsLoad.IsLoading = true;
+        projectsLoad.Error = null;
+
         try
         {
             projects = await ProjectApiService.GetMineAsync(
-                new ProjectQueryRequest { Page = 1, PageSize = 1 });
+                new ProjectQueryRequest
+                {
+                    Page = 1,
+                    PageSize = 1
+                });
+
             if (projects is null)
             {
-                projectsError = "Your project totals are unavailable.";
+                projectsLoad.Error = "Your project totals are unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            projectsError = "The project service could not be reached.";
+            projectsLoad.Error = "The project service could not be reached.";
         }
         catch (JsonException)
         {
-            projectsError = "The project service returned an invalid response.";
+            projectsLoad.Error = "The project service returned an invalid response.";
+        }
+        finally
+        {
+            projectsLoad.IsLoading = false;
         }
     }
 
     private async Task LoadWorkspacesAsync()
     {
+        workspacesLoad.IsLoading = true;
+        workspacesLoad.Error = null;
+
         try
         {
             workspaces = await WorkspaceApiService.GetAsync(
-                new PagedSearchRequest { Page = 1, PageSize = 1 });
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = 1
+                });
+
             if (workspaces is null)
             {
-                workspacesError = "Your workspace totals are unavailable.";
+                workspacesLoad.Error = "Your workspace totals are unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            workspacesError = "The workspace service could not be reached.";
+            workspacesLoad.Error = "The workspace service could not be reached.";
         }
         catch (JsonException)
         {
-            workspacesError = "The workspace service returned an invalid response.";
+            workspacesLoad.Error = "The workspace service returned an invalid response.";
+        }
+        finally
+        {
+            workspacesLoad.IsLoading = false;
         }
     }
 

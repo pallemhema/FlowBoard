@@ -1,5 +1,6 @@
 using Microsoft.JSInterop;
 using FlowBoard.Shared.DTOs.Auth;
+using FlowBoard.Shared.DTOs.Common;
 
 namespace FlowBoard.Web.Services.Api;
 
@@ -35,7 +36,7 @@ public class AuthApiService : IAuthApiService
     // Blazor → Web AuthController
     // ============================================================
 
-    public async Task<AuthenticationResult?> LoginAsync(
+    public async Task<AuthenticationAttemptResult?> LoginAsync(
         LoginRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -46,7 +47,7 @@ public class AuthApiService : IAuthApiService
         try
         {
             var result =
-                await _jsRuntime.InvokeAsync<AuthenticationResult?>(
+                await _jsRuntime.InvokeAsync<AuthenticationAttemptResult?>(
                     "flowBoardAuth.login",
                     cancellationToken,
                     request.Email,
@@ -54,7 +55,7 @@ public class AuthApiService : IAuthApiService
 
             Console.WriteLine(
                 $"WEB AuthApiService: Access token received = " +
-                $"{!string.IsNullOrWhiteSpace(result?.AccessToken)}");
+                $"{!string.IsNullOrWhiteSpace(result?.Authentication?.AccessToken)}");
 
             return result;
         }
@@ -73,7 +74,7 @@ public class AuthApiService : IAuthApiService
     // Web AuthController → Backend API
     // ============================================================
 
-    public async Task<AuthenticationResult?> LoginBackendAsync(
+    public async Task<AuthenticationAttemptResult> LoginBackendAsync(
         LoginRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -94,12 +95,40 @@ public class AuthApiService : IAuthApiService
             $"WEB AuthApiService: Backend login response = " +
             $"{(int)response.StatusCode} {response.StatusCode}");
 
+        Console.WriteLine($"Backend status: {(int)response.StatusCode}");
+
+    var rawResponse = await response.Content.ReadAsStringAsync(
+        cancellationToken);
+
+    Console.WriteLine($"Backend error response: {rawResponse}");
+
         if (!response.IsSuccessStatusCode)
         {
             Console.WriteLine(
                 "WEB AuthApiService: Backend login FAILED.");
 
-            return null;
+            var error = await response.Content
+                .ReadFromJsonAsync<ErrorResponse>(
+                    cancellationToken: cancellationToken);
+            var errorMessage = error?.Message is
+                AuthErrorMessages.InvalidCredentials or
+                AuthErrorMessages.AccountDeactivated
+                    ? error.Message
+                    : AuthErrorMessages.InvalidCredentials;
+
+
+                Console.WriteLine($"Deserialized error: {error?.Message}");
+
+Console.WriteLine(
+    $"Expected deactivated message: {AuthErrorMessages.AccountDeactivated}");
+
+Console.WriteLine(
+    $"Exact match: {error?.Message == AuthErrorMessages.AccountDeactivated}");
+
+            return new AuthenticationAttemptResult
+            {
+                ErrorMessage = errorMessage
+            };
         }
 
         var result =
@@ -114,7 +143,10 @@ public class AuthApiService : IAuthApiService
             $"WEB AuthApiService: Refresh token received = " +
             $"{!string.IsNullOrWhiteSpace(result?.RefreshToken)}");
 
-        return result;
+        return new AuthenticationAttemptResult
+        {
+            Authentication = result
+        };
     }
     // ============================================================
     // REFRESH

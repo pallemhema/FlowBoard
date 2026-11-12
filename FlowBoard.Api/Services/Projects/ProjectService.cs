@@ -748,8 +748,8 @@ public class ProjectService : IProjectService
 
     private static void ValidateProjectFields(
         string name,
-        DateTime startDate,
-        DateTime endDate)
+        DateOnly startDate,
+        DateOnly endDate)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -837,9 +837,9 @@ public class ProjectService : IProjectService
 
         public DomainProjectStatus Status { get; init; }
 
-        public DateTime StartDate { get; init; }
+        public DateOnly StartDate { get; init; }
 
-        public DateTime EndDate { get; init; }
+        public DateOnly EndDate { get; init; }
 
         public DateTime CreatedAt { get; init; }
 

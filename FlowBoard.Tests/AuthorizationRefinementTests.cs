@@ -12,6 +12,7 @@ using FlowBoard.Api.Services.MyTasks;
 using FlowBoard.Api.Services.ManagerEmployees;
 using FlowBoard.Api.Services.TaskAssignments;
 using FlowBoard.Api.Services.Workspaces;
+using FlowBoard.Api.Middleware;
 using FlowBoard.Domain.Entities;
 using FlowBoard.Domain.Enums;
 using FlowBoard.Api.Configuration;
@@ -28,7 +29,10 @@ using FlowBoard.Shared.DTOs.Teams;
 using FlowBoard.Shared.DTOs.Workspaces;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
 
 namespace FlowBoard.Tests;
 
@@ -63,14 +67,35 @@ public sealed class AuthorizationRefinementTests
 
         await using var projectContext =
             database.CreateContext(adminId, UserRole.Admin);
+        var request = ProjectRequest(workspaceId, managerId);
+        request.StartDate = new DateOnly(2026, 3, 8);
+        request.EndDate = new DateOnly(2026, 4, 12);
         var project = await CreateProjectService(
                 projectContext,
                 adminId,
                 UserRole.Admin)
-            .CreateAsync(ProjectRequest(workspaceId, managerId));
+            .CreateAsync(request);
 
         Assert.Equal(managerId, project.ManagerId);
         Assert.Equal(workspaceId, project.WorkspaceId);
+        Assert.Equal(request.StartDate, project.StartDate);
+        Assert.Equal(request.EndDate, project.EndDate);
+        Assert.Equal(typeof(DateOnly), projectContext.Model
+            .FindEntityType(typeof(Project))!
+            .FindProperty(nameof(Project.StartDate))!
+            .ClrType);
+        Assert.Equal("date", projectContext.Model
+            .FindEntityType(typeof(Project))!
+            .FindProperty(nameof(Project.StartDate))!
+            .GetColumnType());
+        Assert.Equal(typeof(DateOnly), projectContext.Model
+            .FindEntityType(typeof(Project))!
+            .FindProperty(nameof(Project.EndDate))!
+            .ClrType);
+        Assert.Equal("date", projectContext.Model
+            .FindEntityType(typeof(Project))!
+            .FindProperty(nameof(Project.EndDate))!
+            .GetColumnType());
     }
 
     [Fact]
@@ -92,6 +117,12 @@ public sealed class AuthorizationRefinementTests
                 Id = workspaceId,
                 Name = "Engineering",
                 OwnerId = adminId
+            });
+            context.ManagerEmployees.Add(new ManagerEmployee
+            {
+                ManagerId = managerId,
+                EmployeeId = employeeId,
+                CreatedAt = DateTime.UtcNow
             });
             await context.SaveChangesAsync();
         }
@@ -202,8 +233,8 @@ public sealed class AuthorizationRefinementTests
                         Name = "Reassigned by manager",
                         ManagerId = managerId,
                         Status = FlowBoard.Shared.Enums.ProjectStatus.Active,
-                        StartDate = DateTime.UtcNow,
-                        EndDate = DateTime.UtcNow.AddDays(1)
+                        StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                        EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1)
                     }));
     }
 
@@ -736,6 +767,93 @@ public sealed class AuthorizationRefinementTests
     }
 
     [Fact]
+    public async Task EmployeeDirectoryFiltersByRoleBeforeSearchAndPagination()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var adminId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var firstEmployeeId = Guid.NewGuid();
+        var secondEmployeeId = Guid.NewGuid();
+        var unrelatedEmployeeId = Guid.NewGuid();
+
+        await using (var setupContext = database.CreateContext(adminId, UserRole.Admin))
+        {
+            AddUser(setupContext, adminId, UserRole.Admin);
+            AddUser(setupContext, managerId, UserRole.Manager);
+            AddUser(setupContext, firstEmployeeId, UserRole.Employee);
+            AddUser(setupContext, secondEmployeeId, UserRole.Employee);
+            AddUser(setupContext, unrelatedEmployeeId, UserRole.Employee);
+
+            var admin = setupContext.Users.Local.Single(user => user.Id == adminId);
+            admin.FirstName = "Dana";
+            admin.LastName = "Search";
+            var manager = setupContext.Users.Local.Single(user => user.Id == managerId);
+            manager.FirstName = "Morgan";
+            manager.LastName = "Search";
+            var firstEmployee = setupContext.Users.Local.Single(
+                user => user.Id == firstEmployeeId);
+            firstEmployee.FirstName = "Ava";
+            firstEmployee.LastName = "Search";
+            var secondEmployee = setupContext.Users.Local.Single(
+                user => user.Id == secondEmployeeId);
+            secondEmployee.FirstName = "Ben";
+            secondEmployee.LastName = "Search";
+            var unrelatedEmployee = setupContext.Users.Local.Single(
+                user => user.Id == unrelatedEmployeeId);
+            unrelatedEmployee.FirstName = "Cara";
+            unrelatedEmployee.LastName = "Other";
+            await setupContext.SaveChangesAsync();
+        }
+
+        await using (var adminContext = database.CreateContext(adminId, UserRole.Admin))
+        {
+            var service = CreateAuthService(
+                adminContext,
+                adminId,
+                UserRole.Admin);
+            var firstPage = await service.GetEmployeesAsync(
+                new PagedSearchRequest
+                {
+                    Search = "search",
+                    Page = 1,
+                    PageSize = 1
+                });
+            var secondPage = await service.GetEmployeesAsync(
+                new PagedSearchRequest
+                {
+                    Search = "search",
+                    Page = 2,
+                    PageSize = 1
+                });
+            var managerSearch = await service.GetEmployeesAsync(
+                new PagedSearchRequest { Search = "morgan" });
+            var adminSearch = await service.GetEmployeesAsync(
+                new PagedSearchRequest { Search = "dana" });
+
+            Assert.Equal(2, firstPage.TotalCount);
+            Assert.Equal(2, firstPage.TotalPages);
+            Assert.Equal(firstEmployeeId, Assert.Single(firstPage.Items).UserId);
+            Assert.Equal(nameof(UserRole.Employee), firstPage.Items[0].Role);
+            Assert.Equal(2, secondPage.TotalCount);
+            Assert.Equal(secondEmployeeId, Assert.Single(secondPage.Items).UserId);
+            Assert.Equal(nameof(UserRole.Employee), secondPage.Items[0].Role);
+            Assert.Empty(managerSearch.Items);
+            Assert.Equal(0, managerSearch.TotalCount);
+            Assert.Empty(adminSearch.Items);
+            Assert.Equal(0, adminSearch.TotalCount);
+        }
+
+        await using var managerContext =
+            database.CreateContext(managerId, UserRole.Manager);
+        await Assert.ThrowsAsync<ForbiddenException>(() =>
+            CreateAuthService(
+                    managerContext,
+                    managerId,
+                    UserRole.Manager)
+                .GetEmployeesAsync(new PagedSearchRequest()));
+    }
+
+    [Fact]
     public async Task ManagerCannotEditAnotherManagersWorkspaceButOwnerCan()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -1192,6 +1310,147 @@ public sealed class AuthorizationRefinementTests
     }
 
     [Fact]
+    public async Task WorkspaceMemberRemovalConflictReturnsOnlyBoardMembershipsInWorkspace()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var adminId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        var otherWorkspaceId = Guid.NewGuid();
+        var firstBoardId = Guid.NewGuid();
+        var secondBoardId = Guid.NewGuid();
+        var otherWorkspaceBoardId = Guid.NewGuid();
+
+        await using (var setupContext = database.CreateContext(adminId, UserRole.Admin))
+        {
+            AddUser(setupContext, adminId, UserRole.Admin);
+            AddUser(setupContext, memberId, UserRole.Employee);
+            setupContext.Workspaces.AddRange(
+                new Workspace
+                {
+                    Id = workspaceId,
+                    Name = "Selected workspace",
+                    OwnerId = adminId
+                },
+                new Workspace
+                {
+                    Id = otherWorkspaceId,
+                    Name = "Other workspace",
+                    OwnerId = adminId
+                });
+            setupContext.WorkspaceMembers.Add(new WorkspaceMember
+            {
+                WorkspaceId = workspaceId,
+                UserId = memberId,
+                JoinedAt = DateTime.UtcNow
+            });
+            setupContext.Boards.AddRange(
+                new Board
+                {
+                    Id = firstBoardId,
+                    Name = "Alpha board",
+                    OwnerId = adminId,
+                    WorkspaceId = workspaceId
+                },
+                new Board
+                {
+                    Id = secondBoardId,
+                    Name = "Beta board",
+                    OwnerId = adminId,
+                    WorkspaceId = workspaceId
+                },
+                new Board
+                {
+                    Id = otherWorkspaceBoardId,
+                    Name = "Unrelated board",
+                    OwnerId = adminId,
+                    WorkspaceId = otherWorkspaceId
+                });
+            setupContext.BoardMembers.AddRange(
+                new BoardMember
+                {
+                    BoardId = firstBoardId,
+                    UserId = memberId,
+                    Role = BoardMemberRole.Editor,
+                    JoinedAt = DateTime.UtcNow
+                },
+                new BoardMember
+                {
+                    BoardId = secondBoardId,
+                    UserId = memberId,
+                    Role = BoardMemberRole.Viewer,
+                    JoinedAt = DateTime.UtcNow
+                },
+                new BoardMember
+                {
+                    BoardId = otherWorkspaceBoardId,
+                    UserId = memberId,
+                    Role = BoardMemberRole.Owner,
+                    JoinedAt = DateTime.UtcNow
+                });
+            await setupContext.SaveChangesAsync();
+        }
+
+        await using var context = database.CreateContext(adminId, UserRole.Admin);
+        var service = CreateWorkspaceService(context, adminId, UserRole.Admin);
+        var conflict = await Assert.ThrowsAsync<ConflictException>(() =>
+            service.RemoveMemberAsync(workspaceId, memberId));
+
+        var details = Assert.IsType<WorkspaceMemberRemovalConflictDetails>(
+            conflict.Details);
+        Assert.Collection(
+            details.BlockingBoardMemberships,
+            board =>
+            {
+                Assert.Equal(firstBoardId, board.BoardId);
+                Assert.Equal("Alpha board", board.BoardName);
+                Assert.Equal(nameof(BoardMemberRole.Editor), board.Role);
+            },
+            board =>
+            {
+                Assert.Equal(secondBoardId, board.BoardId);
+                Assert.Equal("Beta board", board.BoardName);
+                Assert.Equal(nameof(BoardMemberRole.Viewer), board.Role);
+            });
+        Assert.DoesNotContain(
+            details.BlockingBoardMemberships,
+            board => board.BoardId == otherWorkspaceBoardId);
+
+        await using var responseBody = new MemoryStream();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Response.Body = responseBody;
+        var middleware = new GlobalExceptionMiddleware(
+            _ => Task.FromException(conflict),
+            NullLogger<GlobalExceptionMiddleware>.Instance);
+
+        await middleware.InvokeAsync(httpContext);
+
+        Assert.Equal(StatusCodes.Status409Conflict, httpContext.Response.StatusCode);
+        responseBody.Position = 0;
+        var errorResponse = await JsonSerializer.DeserializeAsync<ErrorResponse>(
+            responseBody,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.NotNull(errorResponse);
+        Assert.Equal("CONFLICT", errorResponse.Code);
+        var responseDetails = Assert.IsType<WorkspaceMemberRemovalConflictDetails>(
+            errorResponse.Details!.Value.Deserialize<WorkspaceMemberRemovalConflictDetails>(
+                new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        Assert.Equal(
+            details.BlockingBoardMemberships.Select(board => board.BoardId),
+            responseDetails.BlockingBoardMemberships.Select(board => board.BoardId));
+        Assert.Equal(
+            details.BlockingBoardMemberships.Select(board => board.BoardName),
+            responseDetails.BlockingBoardMemberships.Select(board => board.BoardName));
+        Assert.Equal(
+            details.BlockingBoardMemberships.Select(board => board.Role),
+            responseDetails.BlockingBoardMemberships.Select(board => board.Role));
+
+        Assert.True(await context.WorkspaceMembers.AnyAsync(
+            member => member.WorkspaceId == workspaceId &&
+                      member.UserId == memberId));
+    }
+
+    [Fact]
     public async Task ProjectDeletionConflictsWhenMembersRemain()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -1216,8 +1475,8 @@ public sealed class AuthorizationRefinementTests
                 Name = "Project",
                 WorkspaceId = workspaceId,
                 ManagerId = managerId,
-                StartDate = DateTime.UtcNow,
-                EndDate = DateTime.UtcNow.AddMonths(1)
+                StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
             });
             context.ProjectMembers.Add(new ProjectMember
             {
@@ -1291,6 +1550,7 @@ public sealed class AuthorizationRefinementTests
         var otherManagerId = Guid.NewGuid();
         var employeeId = Guid.NewGuid();
         var workspaceId = Guid.NewGuid();
+        var boardId = Guid.NewGuid();
 
         await using (var context = database.CreateContext(managerId, UserRole.Manager))
         {
@@ -1315,6 +1575,20 @@ public sealed class AuthorizationRefinementTests
                 EmployeeId = employeeId,
                 CreatedAt = DateTime.UtcNow
             });
+            context.Boards.Add(new Board
+            {
+                Id = boardId,
+                Name = "Restricted board",
+                OwnerId = managerId,
+                WorkspaceId = workspaceId
+            });
+            context.BoardMembers.Add(new BoardMember
+            {
+                BoardId = boardId,
+                UserId = employeeId,
+                Role = BoardMemberRole.Editor,
+                JoinedAt = DateTime.UtcNow
+            });
             await context.SaveChangesAsync();
         }
 
@@ -1327,6 +1601,9 @@ public sealed class AuthorizationRefinementTests
                     UserRole.Manager)
                 .RemoveMemberAsync(workspaceId, employeeId));
         Assert.Equal(1, await managerContext.WorkspaceMembers.CountAsync());
+        Assert.True(await managerContext.BoardMembers.AnyAsync(
+            member => member.BoardId == boardId &&
+                      member.UserId == employeeId));
     }
 
     [Fact]
@@ -1405,7 +1682,7 @@ public sealed class AuthorizationRefinementTests
     }
 
     [Fact]
-    public async Task ManagerBoardListIncludesAuthorizedBoardsButNotOtherWorkspaceBoards()
+    public async Task ManagerBoardListIncludesAllBoardsInAccessibleWorkspace()
     {
         await using var database = await TestDatabase.CreateAsync();
         var managerSeed = await database.SeedManagerProjectBoardAsync();
@@ -1446,15 +1723,329 @@ public sealed class AuthorizationRefinementTests
             new BoardAuthorizationService(managerContext, currentUser));
 
         var boards = await service.GetAsync(new BoardQueryRequest());
-        var accessibleBoard = Assert.Single(boards.Items);
-        Assert.Equal(managerSeed.BoardId, accessibleBoard.Id);
-        Assert.True(accessibleBoard.CanManageBoard);
-        await Assert.ThrowsAsync<ForbiddenException>(() =>
-            service.GetByIdAsync(unrelatedBoardId));
+        Assert.Equal(2, boards.TotalCount);
+        Assert.All(boards.Items, board => Assert.True(board.CanManageBoard));
+        Assert.Contains(boards.Items, board => board.Id == managerSeed.BoardId);
+        Assert.Contains(boards.Items, board => board.Id == unrelatedBoardId);
+        Assert.True((await service.GetByIdAsync(unrelatedBoardId)).CanManageBoard);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ActiveWorkspaceManagerCanCreateBoardsAndManageEligibleBoardMembers(
+        bool isWorkspaceOwner)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var adminId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var projectEmployeeId = Guid.NewGuid();
+        var workspaceEmployeeId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var workspaceOwnerId = isWorkspaceOwner ? managerId : adminId;
+
+        await using (var setupContext = database.CreateContext(adminId, UserRole.Admin))
+        {
+            AddUser(setupContext, adminId, UserRole.Admin);
+            AddUser(setupContext, managerId, UserRole.Manager);
+            AddUser(setupContext, projectEmployeeId, UserRole.Employee);
+            AddUser(setupContext, workspaceEmployeeId, UserRole.Employee);
+            setupContext.Workspaces.Add(new Workspace
+            {
+                Id = workspaceId,
+                Name = "Board workspace",
+                OwnerId = workspaceOwnerId
+            });
+            if (!isWorkspaceOwner)
+            {
+                setupContext.WorkspaceMembers.Add(new WorkspaceMember
+                {
+                    WorkspaceId = workspaceId,
+                    UserId = managerId,
+                    JoinedAt = DateTime.UtcNow
+                });
+            }
+            setupContext.WorkspaceMembers.AddRange(
+                new WorkspaceMember
+                {
+                    WorkspaceId = workspaceId,
+                    UserId = projectEmployeeId,
+                    JoinedAt = DateTime.UtcNow
+                },
+                new WorkspaceMember
+                {
+                    WorkspaceId = workspaceId,
+                    UserId = workspaceEmployeeId,
+                    JoinedAt = DateTime.UtcNow
+                });
+            setupContext.Projects.Add(new Project
+            {
+                Id = projectId,
+                Name = "Workspace project",
+                WorkspaceId = workspaceId,
+                ManagerId = adminId,
+                StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
+            });
+            setupContext.ProjectMembers.Add(new ProjectMember
+            {
+                ProjectId = projectId,
+                UserId = projectEmployeeId,
+                JoinedAt = DateTime.UtcNow
+            });
+            await setupContext.SaveChangesAsync();
+        }
+
+        await using var managerContext = database.CreateContext(
+            managerId,
+            UserRole.Manager);
+        var currentUser = new TestCurrentUser(managerId, UserRole.Manager);
+        var authorization = new BoardAuthorizationService(
+            managerContext,
+            currentUser);
+        var boardService = new BoardService(
+            managerContext,
+            currentUser,
+            authorization);
+        var projectOptions = await boardService.GetWorkspaceProjectsAsync(workspaceId);
+        var projectOption = Assert.Single(projectOptions);
+        Assert.Equal(projectId, projectOption.ProjectId);
+
+        var projectBoard = await boardService.CreateAsync(new CreateBoardRequest
+        {
+            Name = "Project board",
+            WorkspaceId = workspaceId,
+            ProjectId = projectId,
+            Purpose = FlowBoard.Shared.Enums.BoardPurpose.Project
+        });
+        var generalBoard = await boardService.CreateAsync(new CreateBoardRequest
+        {
+            Name = "General board",
+            WorkspaceId = workspaceId,
+            Purpose = FlowBoard.Shared.Enums.BoardPurpose.GeneralLearning
+        });
+        Assert.True(projectBoard.CanManageBoard);
+        Assert.True(generalBoard.CanManageBoard);
+
+        var memberService = CreateBoardMemberService(managerContext, currentUser);
+        var projectMember = await memberService.AddAsync(
+            projectBoard.Id,
+            new AddBoardMemberRequest
+            {
+                UserId = projectEmployeeId,
+                Role = FlowBoard.Shared.Enums.BoardMemberRole.Editor
+            });
+        Assert.Equal(projectEmployeeId, projectMember.UserId);
+        await memberService.RemoveAsync(projectBoard.Id, projectEmployeeId);
+
+        var workspaceMember = await memberService.AddAsync(
+            generalBoard.Id,
+            new AddBoardMemberRequest
+            {
+                UserId = workspaceEmployeeId,
+                Role = FlowBoard.Shared.Enums.BoardMemberRole.Editor
+            });
+        Assert.Equal(workspaceEmployeeId, workspaceMember.UserId);
+        await memberService.RemoveAsync(generalBoard.Id, workspaceEmployeeId);
+
+        var accessibleBoards = await boardService.GetAsync(new BoardQueryRequest
+        {
+            WorkspaceId = workspaceId
+        });
+        Assert.Equal(2, accessibleBoards.TotalCount);
+        Assert.All(accessibleBoards.Items, board =>
+            Assert.True(board.CanManageBoard));
     }
 
     [Fact]
-    public async Task EmployeeCanAssignOnlyThemselvesAndManagerCanAddOnlyDirectReportsToBoard()
+    public async Task BoardManagementRequiresActiveWorkspaceManagerAndIndependentMemberships()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var adminId = Guid.NewGuid();
+        var managerId = Guid.NewGuid();
+        var projectManagerWithoutWorkspaceAccessId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
+        var projectMemberWithoutWorkspaceAccessId = Guid.NewGuid();
+        var inactiveManagerId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        var otherWorkspaceId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var otherProjectId = Guid.NewGuid();
+        var boardId = Guid.NewGuid();
+        var ownerOnlyBoardId = Guid.NewGuid();
+
+        await using (var setupContext = database.CreateContext(adminId, UserRole.Admin))
+        {
+            AddUser(setupContext, adminId, UserRole.Admin);
+            AddUser(setupContext, managerId, UserRole.Manager);
+            AddUser(setupContext, projectManagerWithoutWorkspaceAccessId, UserRole.Manager);
+            AddUser(setupContext, employeeId, UserRole.Employee);
+            AddUser(setupContext, projectMemberWithoutWorkspaceAccessId, UserRole.Employee);
+            AddUser(setupContext, inactiveManagerId, UserRole.Manager);
+            setupContext.Users.Single(user => user.Id == inactiveManagerId).IsActive = false;
+            setupContext.Workspaces.AddRange(
+                new Workspace
+                {
+                    Id = workspaceId,
+                    Name = "Admin workspace",
+                    OwnerId = adminId
+                },
+                new Workspace
+                {
+                    Id = otherWorkspaceId,
+                    Name = "Other workspace",
+                    OwnerId = adminId
+                });
+            setupContext.WorkspaceMembers.AddRange(
+                new WorkspaceMember
+                {
+                    WorkspaceId = workspaceId,
+                    UserId = managerId,
+                    JoinedAt = DateTime.UtcNow
+                },
+                new WorkspaceMember
+                {
+                    WorkspaceId = workspaceId,
+                    UserId = employeeId,
+                    JoinedAt = DateTime.UtcNow
+                },
+                new WorkspaceMember
+                {
+                    WorkspaceId = workspaceId,
+                    UserId = inactiveManagerId,
+                    JoinedAt = DateTime.UtcNow
+                });
+            setupContext.Projects.AddRange(
+                new Project
+                {
+                    Id = projectId,
+                    Name = "Protected project",
+                    WorkspaceId = workspaceId,
+                    ManagerId = projectManagerWithoutWorkspaceAccessId,
+                    StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                    EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
+                },
+                new Project
+                {
+                    Id = otherProjectId,
+                    Name = "Other workspace project",
+                    WorkspaceId = otherWorkspaceId,
+                    ManagerId = adminId,
+                    StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                    EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
+                });
+            setupContext.ProjectMembers.Add(new ProjectMember
+            {
+                ProjectId = projectId,
+                UserId = projectMemberWithoutWorkspaceAccessId,
+                JoinedAt = DateTime.UtcNow
+            });
+            setupContext.Boards.AddRange(
+                new Board
+                {
+                    Id = boardId,
+                    Name = "Project board",
+                    WorkspaceId = workspaceId,
+                    ProjectId = projectId,
+                    OwnerId = adminId,
+                    Purpose = BoardPurpose.Project
+                },
+                new Board
+                {
+                    Id = ownerOnlyBoardId,
+                    Name = "Owner-only board",
+                    WorkspaceId = otherWorkspaceId,
+                    OwnerId = employeeId,
+                    Purpose = BoardPurpose.GeneralLearning
+                });
+            await setupContext.SaveChangesAsync();
+        }
+
+        await using (var managerContext = database.CreateContext(managerId, UserRole.Manager))
+        {
+            var manager = new TestCurrentUser(managerId, UserRole.Manager);
+            var authorization = new BoardAuthorizationService(managerContext, manager);
+            var boardService = new BoardService(managerContext, manager, authorization);
+
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                boardService.CreateAsync(new CreateBoardRequest
+                {
+                    Name = "Cross-workspace project board",
+                    WorkspaceId = workspaceId,
+                    ProjectId = otherProjectId,
+                    Purpose = FlowBoard.Shared.Enums.BoardPurpose.Project
+                }));
+
+            await Assert.ThrowsAsync<ConflictException>(() =>
+                CreateBoardMemberService(managerContext, manager).AddAsync(
+                    boardId,
+                    new AddBoardMemberRequest
+                    {
+                        UserId = employeeId,
+                        Role = FlowBoard.Shared.Enums.BoardMemberRole.Editor
+                    }));
+
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                authorization.EnsureCanViewAsync(boardId));
+        }
+
+        await using (var employeeContext = database.CreateContext(employeeId, UserRole.Employee))
+        {
+            var employee = new TestCurrentUser(employeeId, UserRole.Employee);
+            var authorization = new BoardAuthorizationService(employeeContext, employee);
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                authorization.EnsureCanManageBoardAsync(boardId));
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                new BoardService(employeeContext, employee, authorization)
+                    .CreateAsync(new CreateBoardRequest
+                    {
+                        Name = "Unauthorized board",
+                        WorkspaceId = workspaceId,
+                        Purpose = FlowBoard.Shared.Enums.BoardPurpose.GeneralLearning
+                    }));
+        }
+
+        await using (var inactiveContext =
+                     database.CreateContext(inactiveManagerId, UserRole.Manager))
+        {
+            var inactive = new TestCurrentUser(inactiveManagerId, UserRole.Manager);
+            var authorization = new BoardAuthorizationService(inactiveContext, inactive);
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                authorization.EnsureCanManageWorkspaceBoardsAsync(workspaceId));
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                authorization.EnsureCanViewAsync(boardId));
+        }
+
+        await using (var projectManagerContext =
+                     database.CreateContext(
+                         projectManagerWithoutWorkspaceAccessId,
+                         UserRole.Manager))
+        {
+            var projectManager = new TestCurrentUser(
+                projectManagerWithoutWorkspaceAccessId,
+                UserRole.Manager);
+            await Assert.ThrowsAsync<ForbiddenException>(() =>
+                new BoardAuthorizationService(projectManagerContext, projectManager)
+                    .EnsureCanManageBoardAsync(boardId));
+        }
+
+        await using (var ownerContext = database.CreateContext(employeeId, UserRole.Employee))
+        {
+            var owner = new TestCurrentUser(employeeId, UserRole.Employee);
+            var ownerBoardService = new BoardService(
+                ownerContext,
+                owner,
+                new BoardAuthorizationService(ownerContext, owner));
+            Assert.True((await ownerBoardService.GetByIdAsync(ownerOnlyBoardId)).CanManageBoard);
+            await ownerBoardService.UpdateAsync(
+                ownerOnlyBoardId,
+                new UpdateBoardRequest { Name = "Updated by board owner" });
+        }
+    }
+
+    [Fact]
+    public async Task ManagerEmployeeRelationshipDoesNotGrantWorkspaceAccessForBoardMembership()
     {
         await using var database = await TestDatabase.CreateAsync();
         var commentBoard = await database.SeedCommentBoardAsync();
@@ -1491,7 +2082,7 @@ public sealed class AuthorizationRefinementTests
             Assert.True(boardResponse.CanManageBoard);
 
             var service = CreateBoardMemberService(managerContext, manager);
-            await Assert.ThrowsAsync<ForbiddenException>(() =>
+            await Assert.ThrowsAsync<ConflictException>(() =>
                 service.AddAsync(
                     managerSeed.BoardId,
                     new AddBoardMemberRequest
@@ -1518,17 +2109,17 @@ public sealed class AuthorizationRefinementTests
         var managerWithDirectReport = new TestCurrentUser(
             managerSeed.ManagerId,
             UserRole.Manager);
-        var added = await CreateBoardMemberService(
-                managerContextWithDirectReport,
-                managerWithDirectReport)
-            .AddAsync(
+        await Assert.ThrowsAsync<ConflictException>(() =>
+            CreateBoardMemberService(
+                    managerContextWithDirectReport,
+                    managerWithDirectReport)
+                .AddAsync(
                 managerSeed.BoardId,
                 new AddBoardMemberRequest
                 {
                     UserId = managerSeed.EmployeeId,
                     Role = FlowBoard.Shared.Enums.BoardMemberRole.Editor
-                });
-        Assert.Equal(managerSeed.EmployeeId, added.UserId);
+                }));
     }
 
     [Fact]
@@ -1626,8 +2217,8 @@ public sealed class AuthorizationRefinementTests
                 Name = "Comment project",
                 WorkspaceId = workspaceId,
                 ManagerId = boardSeed.OwnerId,
-                StartDate = DateTime.UtcNow.Date,
-                EndDate = DateTime.UtcNow.Date.AddDays(30)
+                StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(30)
             });
             employeeContext.Boards.Add(new Board
             {
@@ -2153,8 +2744,8 @@ public sealed class AuthorizationRefinementTests
             Name = "Test project",
             WorkspaceId = workspaceId,
             ManagerId = managerId,
-            StartDate = DateTime.UtcNow,
-            EndDate = DateTime.UtcNow.AddMonths(1)
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
         };
 
     private static void AddUser(
@@ -2286,8 +2877,8 @@ public sealed class AuthorizationRefinementTests
                 Name = "Project",
                 WorkspaceId = workspaceId,
                 ManagerId = ownerId,
-                StartDate = DateTime.UtcNow,
-                EndDate = DateTime.UtcNow.AddMonths(1)
+                StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
             });
             context.ProjectMembers.Add(new ProjectMember
             {
@@ -2431,8 +3022,8 @@ public sealed class AuthorizationRefinementTests
                 Name = "Managed project",
                 WorkspaceId = workspaceId,
                 ManagerId = managerId,
-                StartDate = DateTime.UtcNow,
-                EndDate = DateTime.UtcNow.AddMonths(1)
+                StartDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                EndDate = DateOnly.FromDateTime(DateTime.UtcNow).AddMonths(1)
             });
             context.ProjectMembers.Add(new ProjectMember
             {

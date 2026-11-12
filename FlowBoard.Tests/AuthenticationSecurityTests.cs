@@ -13,6 +13,7 @@ using FlowBoard.Web.Services.Api;
 using FlowBoard.Web.Services.Authentication;
 using FlowBoard.Web.Services.UI;
 using FlowBoard.Shared.DTOs.Auth;
+using FlowBoard.Shared.DTOs.Common;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -169,6 +170,62 @@ public class AuthenticationSecurityTests
         Assert.Contains(refreshToken, cookieHeader);
         Assert.Contains("expires=", cookieHeader, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("httponly", cookieHeader, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task WebLoginReturnsSpecificDeactivationErrorWithoutSettingCookie()
+    {
+        var controller = new FlowBoard.Web.Controllers.AuthController(
+            new StubAuthApiService(
+                "unused-refresh-token",
+                backendLoginError: AuthErrorMessages.AccountDeactivated),
+            CreateEnvironment(Environments.Development))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Login(
+            new LoginRequest
+            {
+                Email = "employee@example.test",
+                Password = "StrongPassword1!"
+            },
+            CancellationToken.None);
+
+        var response = Assert.IsType<ErrorResponse>(
+            Assert.IsType<UnauthorizedObjectResult>(result).Value);
+
+        Assert.Equal(AuthErrorMessages.AccountDeactivated, response.Message);
+        Assert.Empty(controller.Response.Headers.SetCookie);
+    }
+
+    [Fact]
+    public async Task LoginDisplaysSpecificDeactivationMessageFromWebApi()
+    {
+        var toastService = new ToastService();
+        var service = new FlowBoard.Web.Services.Authentication.AuthenticationService(
+            new FlowBoardAuthenticationStateProvider(),
+            new StubAuthApiService(
+                "unused-refresh-token",
+                loginResult: new AuthenticationAttemptResult
+                {
+                    ErrorMessage = AuthErrorMessages.AccountDeactivated
+                }),
+            new AccessTokenState(),
+            toastService);
+
+        var succeeded = await service.LoginAsync(new LoginRequest
+        {
+            Email = "employee@example.test",
+            Password = "StrongPassword1!"
+        });
+
+        Assert.False(succeeded);
+        Assert.Equal(AuthErrorMessages.AccountDeactivated, toastService.Message);
+        Assert.Equal(ToastType.Error, toastService.Type);
     }
 
     [Fact]
@@ -417,23 +474,39 @@ public class AuthenticationSecurityTests
         };
     }
 
-    private sealed class StubAuthApiService(string refreshToken) : IAuthApiService
+    private sealed class StubAuthApiService(
+        string refreshToken,
+        string? backendLoginError = null,
+        AuthenticationAttemptResult? loginResult = null) : IAuthApiService
     {
-        public Task<AuthenticationResult?> LoginAsync(
+        public Task<AuthenticationAttemptResult?> LoginAsync(
             LoginRequest request,
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<AuthenticationResult?>(null);
+            Task.FromResult(loginResult);
 
-        public Task<AuthenticationResult?> LoginBackendAsync(
+        public Task<AuthenticationAttemptResult> LoginBackendAsync(
             LoginRequest request,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult<AuthenticationResult?>(new AuthenticationResult
+            CancellationToken cancellationToken = default)
+        {
+            if (backendLoginError is not null)
             {
-                AccessToken = "access-token",
-                RefreshToken = refreshToken,
-                ExpiresAt = DateTime.UtcNow.AddMinutes(1),
-                RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(7)
+                return Task.FromResult(new AuthenticationAttemptResult
+                {
+                    ErrorMessage = backendLoginError
+                });
+            }
+
+            return Task.FromResult(new AuthenticationAttemptResult
+            {
+                Authentication = new AuthenticationResult
+                {
+                    AccessToken = "access-token",
+                    RefreshToken = refreshToken,
+                    ExpiresAt = DateTime.UtcNow.AddMinutes(1),
+                    RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(7)
+                }
             });
+        }
 
         public Task<AuthenticationResult?> RefreshAsync(
             CancellationToken cancellationToken = default) =>

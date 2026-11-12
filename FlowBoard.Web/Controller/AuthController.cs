@@ -1,4 +1,5 @@
 using FlowBoard.Shared.DTOs.Auth;
+using FlowBoard.Shared.DTOs.Common;
 using FlowBoard.Web.Configuration;
 using FlowBoard.Web.Services.Api;
 using Microsoft.AspNetCore.Mvc;
@@ -45,33 +46,40 @@ public class AuthController : ControllerBase
                 request,
                 cancellationToken);
 
-        if (result is null)
+        if (result.Authentication is null)
         {
             Console.WriteLine(
                 "WEB: Backend login FAILED.");
 
-            return Unauthorized();
+            return Unauthorized(new ErrorResponse
+            {
+                Code = "UNAUTHORIZED",
+                Message = result.ErrorMessage ??
+                    AuthErrorMessages.InvalidCredentials
+            });
         }
+
+        var authentication = result.Authentication;
 
         Console.WriteLine(
             "WEB: Backend login SUCCESS.");
 
         Console.WriteLine(
             $"WEB: Access token received = " +
-            $"{!string.IsNullOrWhiteSpace(result.AccessToken)}");
+            $"{!string.IsNullOrWhiteSpace(authentication.AccessToken)}");
 
         Console.WriteLine(
             $"WEB: Refresh token received = " +
-            $"{!string.IsNullOrWhiteSpace(result.RefreshToken)}");
+            $"{!string.IsNullOrWhiteSpace(authentication.RefreshToken)}");
 
         SetRefreshTokenCookie(
-            result.RefreshToken,
-            result.RefreshTokenExpiresAt);
+            authentication.RefreshToken,
+            authentication.RefreshTokenExpiresAt);
 
         Console.WriteLine(
             "WEB: Refresh token cookie set.");
 
-        return Ok(CreateAuthenticationResponse(result));
+        return Ok(CreateAuthenticationResponse(authentication));
     }
 
     // ============================================================

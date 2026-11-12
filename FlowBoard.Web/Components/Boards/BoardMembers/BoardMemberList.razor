@@ -22,6 +22,7 @@ else
                 @key="member.UserId"
                 Member="member"
                 CanManageBoard="CanManageBoard"
+                CanDeleteContent="CanDeleteContent"
                 OnEditRole="OnEditRole"
                 OnRemove="OnRemove" />
         }
@@ -37,6 +38,9 @@ else
 
     [Parameter]
     public bool CanManageBoard { get; set; }
+    
+    [Parameter]
+    public bool CanDeleteContent { get; set; }
 
     [Parameter]
     public EventCallback<BoardMemberResponse> OnEditRole { get; set; }

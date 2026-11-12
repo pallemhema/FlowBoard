@@ -1,16 +1,6 @@
 @page "/admin/dashboard"
-@attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
 
-@using System.Net.Http
-@using System.Security.Claims
-@using System.Text.Json
-@using FlowBoard.Shared.DTOs.Auth
-@using FlowBoard.Shared.DTOs.Common
-@using FlowBoard.Shared.DTOs.Projects
-@using FlowBoard.Shared.DTOs.Teams
-@using FlowBoard.Shared.DTOs.Workspaces
-@using FlowBoard.Shared.Enums
-@using FlowBoard.Web.Services.Api
+@attribute [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
 
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IUserDirectoryApiService UserDirectoryApiService
@@ -35,104 +25,128 @@
     @if (isLoading)
     {
         <div class="dashboard-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+            <span class="spinner-border spinner-border-sm text-primary"
+                  aria-hidden="true"></span>
             <span>Loading organization overview…</span>
         </div>
     }
 
     <section aria-label="Organization statistics">
         <div class="dashboard-stat-grid">
+
             <DashboardStatCard Label="Total users"
                                Icon="bi-people"
-                               Value="@(userDirectory?.TotalCount ?? 0)"
-                               IsLoading="@isLoading"
-                               IsUnavailable="@(userDirectory is null)"
-                               UnavailableReason="@usersError" />
+                               Value="@(userTotalCount ?? 0)"
+                               IsLoading="@usersLoad.IsLoading"
+                               IsUnavailable="@(userTotalCount is null)"
+                               UnavailableReason="@usersLoad.Error" />
+
             <DashboardStatCard Label="Admins"
                                Icon="bi-shield-check"
                                IconTone="stat-tone-indigo"
                                Value="@(GetRoleCount("Admin"))"
-                               IsLoading="@isLoading"
+                               IsLoading="@userRolesLoad.IsLoading"
                                IsUnavailable="@(!userRolesLoaded)"
-                               UnavailableReason="@userRolesError" />
+                               UnavailableReason="@userRolesLoad.Error" />
+
             <DashboardStatCard Label="Managers"
                                Icon="bi-person-badge"
                                IconTone="stat-tone-violet"
                                Value="@(GetRoleCount("Manager"))"
-                               IsLoading="@isLoading"
+                               IsLoading="@userRolesLoad.IsLoading"
                                IsUnavailable="@(!userRolesLoaded)"
-                               UnavailableReason="@userRolesError" />
+                               UnavailableReason="@userRolesLoad.Error" />
+
             <DashboardStatCard Label="Employees"
                                Icon="bi-person"
                                IconTone="stat-tone-blue"
                                Value="@(GetRoleCount("Employee"))"
-                               IsLoading="@isLoading"
+                               IsLoading="@userRolesLoad.IsLoading"
                                IsUnavailable="@(!userRolesLoaded)"
-                               UnavailableReason="@userRolesError" />
+                               UnavailableReason="@userRolesLoad.Error" />
+
             <DashboardStatCard Label="Teams"
                                Icon="bi-diagram-3"
                                IconTone="stat-tone-green"
-                               Value="@(teams?.TotalCount ?? 0)"
-                               IsLoading="@isLoading"
-                               IsUnavailable="@(teams is null)"
-                               UnavailableReason="@teamsError" />
+                               Value="@(teamTotalCount ?? 0)"
+                               IsLoading="@teamsLoad.IsLoading"
+                               IsUnavailable="@(teamTotalCount is null)"
+                               UnavailableReason="@teamsLoad.Error" />
+
             <DashboardStatCard Label="Workspaces"
                                Icon="bi-grid"
                                IconTone="stat-tone-amber"
-                               Value="@(workspaces?.TotalCount ?? 0)"
-                               IsLoading="@isLoading"
-                               IsUnavailable="@(workspaces is null)"
-                               UnavailableReason="@workspacesError" />
+                               Value="@(workspaceTotalCount ?? 0)"
+                               IsLoading="@workspacesLoad.IsLoading"
+                               IsUnavailable="@(workspaceTotalCount is null)"
+                               UnavailableReason="@workspacesLoad.Error" />
+
             <DashboardStatCard Label="Active projects"
                                Icon="bi-kanban"
                                IconTone="stat-tone-indigo"
                                Value="@activeProjectCount"
-                               IsLoading="@isLoading"
+                               IsLoading="@projectsLoad.IsLoading"
                                IsUnavailable="@(!projectsLoaded)"
-                               UnavailableReason="Project list could not be loaded completely." />
+                               UnavailableReason="@projectsLoad.Error" />
+
         </div>
     </section>
 
     <div class="dashboard-main-grid">
 
+        <section class="dashboard-panel project-panel"
+                 aria-labelledby="project-title">
 
-        <section class="dashboard-panel project-panel" aria-labelledby="project-title">
             <div class="dashboard-panel-heading">
                 <div>
                     <p class="section-label mb-1">Portfolio</p>
-                    <h2 id="project-title" class="dashboard-section-title">Project overview</h2>
+                    <h2 id="project-title" class="dashboard-section-title">
+                        Project overview
+                    </h2>
                 </div>
-                <NavLink class="dashboard-text-link" href="/admin/projects">Manage <i class="bi bi-arrow-up-right ms-1" aria-hidden="true"></i></NavLink>
+
+                <NavLink class="dashboard-text-link" href="/admin/projects">
+                    Manage
+                    <i class="bi bi-arrow-up-right ms-1" aria-hidden="true"></i>
+                </NavLink>
             </div>
 
-            @if (isLoading)
+            @if (projectsLoad.IsLoading)
             {
-                <p class="dashboard-loading-copy">Loading project portfolio…</p>
+                <p class="dashboard-loading-copy">
+                    Loading project portfolio…
+                </p>
             }
             else if (!projectsLoaded)
             {
                 <div class="dashboard-inline-error" role="alert">
-                    @(projectsError ?? "Project information could not be loaded completely. Counts and project lists are withheld to avoid partial totals.")
+                    @(projectsLoad.Error ??
+                        "Project information could not be loaded completely. Counts and project lists are withheld to avoid partial totals.")
                 </div>
             }
             else
             {
-                <div class="project-status-summary" aria-label="Project totals by status">
+                <div class="project-status-summary"
+                     aria-label="Project totals by status">
+
                     <div class="project-status-item">
                         <span class="status-dot status-active"></span>
                         <span>Active</span>
                         <strong>@activeProjectCount.ToString("N0")</strong>
                     </div>
+
                     <div class="project-status-item">
                         <span class="status-dot status-completed"></span>
                         <span>Completed</span>
                         <strong>@completedProjectCount.ToString("N0")</strong>
                     </div>
+
                     <div class="project-status-item">
                         <span class="status-dot status-on-hold"></span>
                         <span>On hold</span>
                         <strong>@onHoldProjectCount.ToString("N0")</strong>
                     </div>
+
                 </div>
 
                 @if (recentProjects.Count == 0)
@@ -153,94 +167,156 @@
                                     <th scope="col">Updated</th>
                                 </tr>
                             </thead>
+
                             <tbody>
                                 @foreach (var project in recentProjects)
                                 {
-                                    <tr>
+                                    <tr @key="project.ProjectId">
                                         <td>
-                                            <strong class="dashboard-project-name">@project.Name</strong>
+                                            <strong class="dashboard-project-name">
+                                                @project.Name
+                                            </strong>
                                         </td>
+
                                         <td>@GetManagerName(project)</td>
+
                                         <td>@project.WorkspaceName</td>
-                                        <td><span class="project-status-badge @GetStatusClass(project.Status)">@GetStatusLabel(project.Status)</span></td>
+
+                                        <td>
+                                            <span class="project-status-badge @GetStatusClass(project.Status)">
+                                                @GetStatusLabel(project.Status)
+                                            </span>
+                                        </td>
+
                                         <td>@GetProjectDate(project)</td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
                     </div>
+
                     @if (projectTotalCount > recentProjects.Count)
                     {
-                        <p class="dashboard-footnote">Showing the 5 most recently updated projects of @projectTotalCount.ToString("N0").</p>
+                        <p class="dashboard-footnote">
+                            Showing the @recentProjects.Count most recently updated
+                            projects of @projectTotalCount.ToString("N0").
+                        </p>
                     }
                 }
             }
         </section>
 
-
     </div>
 
-    <section class="dashboard-quick-actions" aria-labelledby="quick-actions-title">
+    <section class="dashboard-quick-actions"
+             aria-labelledby="quick-actions-title">
+
         <div class="dashboard-panel-heading">
             <div>
                 <p class="section-label mb-1">Shortcuts</p>
-                <h2 id="quick-actions-title" class="dashboard-section-title">Quick actions</h2>
+                <h2 id="quick-actions-title" class="dashboard-section-title">
+                    Quick actions
+                </h2>
             </div>
         </div>
+
         <div class="quick-action-grid">
+
             <NavLink class="quick-action quick-action-link" href="/admin/users">
-                <span class="quick-action-icon"><i class="bi bi-person-plus" aria-hidden="true"></i></span>
+                <span class="quick-action-icon">
+                    <i class="bi bi-person-plus" aria-hidden="true"></i>
+                </span>
                 <span>Manage users</span>
-                <i class="bi bi-arrow-up-right quick-action-arrow" aria-hidden="true"></i>
+                <i class="bi bi-arrow-up-right quick-action-arrow"
+                   aria-hidden="true"></i>
             </NavLink>
+
             <NavLink class="quick-action quick-action-link" href="/admin/teams">
-                <span class="quick-action-icon"><i class="bi bi-diagram-3" aria-hidden="true"></i></span>
+                <span class="quick-action-icon">
+                    <i class="bi bi-diagram-3" aria-hidden="true"></i>
+                </span>
                 <span>Manage teams</span>
-                <i class="bi bi-arrow-up-right quick-action-arrow" aria-hidden="true"></i>
+                <i class="bi bi-arrow-up-right quick-action-arrow"
+                   aria-hidden="true"></i>
             </NavLink>
-            <NavLink class="quick-action quick-action-link" href="/admin/manager-assignments">
-                <span class="quick-action-icon"><i class="bi bi-person-gear" aria-hidden="true"></i></span>
+
+            <NavLink class="quick-action quick-action-link"
+                     href="/admin/manager-assignments">
+                <span class="quick-action-icon">
+                    <i class="bi bi-person-gear" aria-hidden="true"></i>
+                </span>
                 <span>Assign managers</span>
-                <i class="bi bi-arrow-up-right quick-action-arrow" aria-hidden="true"></i>
+                <i class="bi bi-arrow-up-right quick-action-arrow"
+                   aria-hidden="true"></i>
             </NavLink>
-            <NavLink class="quick-action quick-action-link" href="/admin/workspaces">
-                <span class="quick-action-icon"><i class="bi bi-grid" aria-hidden="true"></i></span>
+
+            <NavLink class="quick-action quick-action-link"
+                     href="/admin/workspaces">
+                <span class="quick-action-icon">
+                    <i class="bi bi-grid" aria-hidden="true"></i>
+                </span>
                 <span>Create workspace</span>
-                <i class="bi bi-arrow-up-right quick-action-arrow" aria-hidden="true"></i>
+                <i class="bi bi-arrow-up-right quick-action-arrow"
+                   aria-hidden="true"></i>
             </NavLink>
-            <NavLink class="quick-action quick-action-link" href="/admin/projects">
-                <span class="quick-action-icon"><i class="bi bi-kanban" aria-hidden="true"></i></span>
+
+            <NavLink class="quick-action quick-action-link"
+                     href="/admin/projects">
+                <span class="quick-action-icon">
+                    <i class="bi bi-kanban" aria-hidden="true"></i>
+                </span>
                 <span>Manage projects</span>
-                <i class="bi bi-arrow-up-right quick-action-arrow" aria-hidden="true"></i>
+                <i class="bi bi-arrow-up-right quick-action-arrow"
+                   aria-hidden="true"></i>
             </NavLink>
-            <NavLink class="quick-action quick-action-link" href="/admin/boards">
-                <span class="quick-action-icon"><i class="bi bi-columns-gap" aria-hidden="true"></i></span>
+
+            <NavLink class="quick-action quick-action-link"
+                     href="/admin/boards">
+                <span class="quick-action-icon">
+                    <i class="bi bi-columns-gap" aria-hidden="true"></i>
+                </span>
                 <span>Manage boards</span>
-                <i class="bi bi-arrow-up-right quick-action-arrow" aria-hidden="true"></i>
+                <i class="bi bi-arrow-up-right quick-action-arrow"
+                   aria-hidden="true"></i>
             </NavLink>
+
         </div>
     </section>
 </div>
-
 @code {
-    private const int ProjectPageSize = 100;
+    // Dashboard-specific defaults
     private const int RecentProjectLimit = 5;
-    private const int UserDirectoryPageSize = 100;
 
-    private PagedResponse<UserDirectoryResponse>? userDirectory;
+    // Dashboard operation states
+    private AsyncOperationState usersLoad = new() { IsLoading = true };
+    private AsyncOperationState userRolesLoad = new() { IsLoading = true };
+    private AsyncOperationState teamsLoad = new() { IsLoading = true };
+    private AsyncOperationState workspacesLoad = new() { IsLoading = true };
+    private AsyncOperationState projectsLoad = new() { IsLoading = true };
+
+    // Aggregate counts
+    private int? userTotalCount;
+    private int? teamTotalCount;
+    private int? workspaceTotalCount;
+
+    // Dashboard data
     private readonly List<UserDirectoryResponse> allDirectoryUsers = [];
-    private PagedResponse<TeamResponse>? teams;
-    private PagedResponse<WorkspaceResponse>? workspaces;
     private readonly List<ProjectResponse> allProjects = [];
-    private ClaimsPrincipal currentUser = new(new ClaimsIdentity());
-    private bool isLoading = true;
-    private bool projectsLoaded;
-    private string? projectsError;
-    private string? usersError;
-    private string? userRolesError;
-    private string? teamsError;
-    private string? workspacesError;
 
+    private ClaimsPrincipal currentUser = new(new ClaimsIdentity());
+
+    // Loading and completion
+    private bool isLoading =>
+        usersLoad.IsLoading ||
+        userRolesLoad.IsLoading ||
+        teamsLoad.IsLoading ||
+        workspacesLoad.IsLoading ||
+        projectsLoad.IsLoading;
+
+    private bool projectsLoaded;
+    private bool userRolesLoaded;
+
+    // Dashboard information
     private string WelcomeMessage
     {
         get
@@ -250,34 +326,53 @@
         }
     }
 
+    // Project statistics
     private int projectTotalCount => allProjects.Count;
+
     private int activeProjectCount => allProjects.Count(
         project => project.Status == ProjectStatus.Active);
+
     private int completedProjectCount => allProjects.Count(
         project => project.Status == ProjectStatus.Completed);
+
     private int onHoldProjectCount => allProjects.Count(
         project => project.Status == ProjectStatus.OnHold);
-    private bool userRolesLoaded;
+
+    // User statistics
     private int GetRoleCount(string role) =>
-        allDirectoryUsers.Count(user => string.Equals(user.Role, role, StringComparison.Ordinal));
+        allDirectoryUsers.Count(user =>
+            string.Equals(user.Role, role, StringComparison.Ordinal));
+
     private int GetOtherRoleCount() =>
         allDirectoryUsers.Count(user =>
             !string.IsNullOrWhiteSpace(user.Role) &&
             user.Role is not ("Admin" or "Manager" or "Employee"));
+
     private int GetUnassignedRoleCount() =>
-        allDirectoryUsers.Count(user => string.IsNullOrWhiteSpace(user.Role));
+        allDirectoryUsers.Count(user =>
+            string.IsNullOrWhiteSpace(user.Role));
+
     private bool IsCurrentAdminInDirectory
     {
         get
         {
             var email = currentUser.FindFirst(ClaimTypes.Email)?.Value
                 ?? currentUser.FindFirst("email")?.Value;
+
             return !string.IsNullOrWhiteSpace(email) &&
                 allDirectoryUsers.Any(user =>
-                    string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase) &&
-                    string.Equals(user.Role, "Admin", StringComparison.Ordinal));
+                    string.Equals(
+                        user.Email,
+                        email,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(
+                        user.Role,
+                        "Admin",
+                        StringComparison.Ordinal));
         }
     }
+
+    // Recent projects
     private IReadOnlyList<ProjectResponse> recentProjects => allProjects
         .OrderByDescending(project => project.ModifiedAt ?? project.CreatedAt)
         .ThenBy(project => project.Name)
@@ -288,6 +383,7 @@
     {
         var authenticationState =
             await AuthenticationStateProvider.GetAuthenticationStateAsync();
+
         currentUser = authenticationState.User;
 
         var userTask = LoadUsersAsync();
@@ -295,42 +391,74 @@
         var workspaceTask = LoadWorkspacesAsync();
         var projectTask = LoadProjectsAsync();
 
-        await Task.WhenAll(userTask, teamTask, workspaceTask, projectTask);
-        isLoading = false;
+        await Task.WhenAll(
+            userTask,
+            teamTask,
+            workspaceTask,
+            projectTask);
     }
 
     private async Task LoadUsersAsync()
     {
+        usersLoad.IsLoading = true;
+        userRolesLoad.IsLoading = true;
+
+        usersLoad.Error = null;
+        userRolesLoad.Error = null;
+
+        userTotalCount = null;
+        userRolesLoaded = false;
+        allDirectoryUsers.Clear();
+
         try
         {
-            userDirectory = await UserDirectoryApiService.GetAsync(
-                new PagedSearchRequest { Page = 1, PageSize = UserDirectoryPageSize });
-            if (userDirectory is null)
+            var firstPage = await UserDirectoryApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = PageSizeDefaults.Resource
+                });
+
+            if (firstPage is null)
             {
-                usersError = "Unable to load the user directory.";
-                userRolesError = usersError;
+                usersLoad.Error = "Unable to load the user directory.";
+                userRolesLoad.Error = usersLoad.Error;
                 return;
             }
 
-            allDirectoryUsers.AddRange(userDirectory.Items);
-            for (var page = 2; page <= userDirectory.TotalPages; page++)
+            userTotalCount = firstPage.TotalCount;
+
+            allDirectoryUsers.AddRange(firstPage.Items);
+
+            for (var page = 2; page <= firstPage.TotalPages; page++)
             {
                 var response = await UserDirectoryApiService.GetAsync(
-                    new PagedSearchRequest { Page = page, PageSize = UserDirectoryPageSize });
+                    new PagedSearchRequest
+                    {
+                        Page = page,
+                        PageSize = PageSizeDefaults.Resource
+                    });
+
                 if (response is null)
                 {
                     allDirectoryUsers.Clear();
-                    userRolesError = "User pagination did not complete. Role totals are withheld.";
+
+                    userRolesLoad.Error =
+                        "User pagination did not complete. Role totals are withheld.";
+
                     return;
                 }
 
                 allDirectoryUsers.AddRange(response.Items);
             }
 
-            if (allDirectoryUsers.Count != userDirectory.TotalCount)
+            if (allDirectoryUsers.Count != userTotalCount)
             {
                 allDirectoryUsers.Clear();
-                userRolesError = "The directory returned an incomplete user count. Role totals are withheld.";
+
+                userRolesLoad.Error =
+                    "The directory returned an incomplete user count. Role totals are withheld.";
+
                 return;
             }
 
@@ -338,85 +466,143 @@
         }
         catch (HttpRequestException)
         {
-            usersError = "The user directory could not be reached.";
-            userRolesError = usersError;
+            usersLoad.Error = "The user directory could not be reached.";
+            userRolesLoad.Error = usersLoad.Error;
+
             allDirectoryUsers.Clear();
+            userTotalCount = null;
         }
         catch (JsonException)
         {
-            usersError = "The user directory returned an invalid response.";
-            userRolesError = usersError;
+            usersLoad.Error = "The user directory returned an invalid response.";
+            userRolesLoad.Error = usersLoad.Error;
+
             allDirectoryUsers.Clear();
+            userTotalCount = null;
+        }
+        finally
+        {
+            usersLoad.IsLoading = false;
+            userRolesLoad.IsLoading = false;
         }
     }
 
     private async Task LoadTeamsAsync()
     {
+        teamsLoad.IsLoading = true;
+        teamsLoad.Error = null;
+        teamTotalCount = null;
+
         try
         {
-            teams = await TeamApiService.GetAllAsync(
-                new PagedSearchRequest { Page = 1, PageSize = 1 });
-            if (teams is null)
+            var response = await TeamApiService.GetAllAsync(
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = 1
+                });
+
+            if (response is null)
             {
-                teamsError = "Unable to load the team directory.";
+                teamsLoad.Error = "Unable to load the team directory.";
+                return;
             }
+
+            teamTotalCount = response.TotalCount;
         }
         catch (HttpRequestException)
         {
-            teamsError = "The team directory could not be reached.";
+            teamsLoad.Error = "The team directory could not be reached.";
         }
         catch (JsonException)
         {
-            teamsError = "The team directory returned an invalid response.";
+            teamsLoad.Error = "The team directory returned an invalid response.";
+        }
+        finally
+        {
+            teamsLoad.IsLoading = false;
         }
     }
 
     private async Task LoadWorkspacesAsync()
     {
+        workspacesLoad.IsLoading = true;
+        workspacesLoad.Error = null;
+        workspaceTotalCount = null;
+
         try
         {
-            workspaces = await WorkspaceApiService.GetAsync(
-                new PagedSearchRequest { Page = 1, PageSize = 5 });
-            if (workspaces is null)
+            var response = await WorkspaceApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = 5
+                });
+
+            if (response is null)
             {
-                workspacesError = "Unable to load workspaces.";
+                workspacesLoad.Error = "Unable to load workspaces.";
+                return;
             }
+
+            workspaceTotalCount = response.TotalCount;
         }
         catch (HttpRequestException)
         {
-            workspacesError = "Workspaces could not be reached.";
+            workspacesLoad.Error = "Workspaces could not be reached.";
         }
         catch (JsonException)
         {
-            workspacesError = "The workspace API returned an invalid response.";
+            workspacesLoad.Error =
+                "The workspace API returned an invalid response.";
+        }
+        finally
+        {
+            workspacesLoad.IsLoading = false;
         }
     }
 
     private async Task LoadProjectsAsync()
     {
+        projectsLoad.IsLoading = true;
+        projectsLoad.Error = null;
+
+        projectsLoaded = false;
+        allProjects.Clear();
+
         try
         {
             var firstPage = await ProjectApiService.GetAsync(
-                new ProjectQueryRequest { Page = 1, PageSize = ProjectPageSize });
+                new ProjectQueryRequest
+                {
+                    Page = 1,
+                    PageSize = PageSizeDefaults.Resource
+                });
+
             if (firstPage is null)
             {
-                projectsError = "Unable to load projects.";
+                projectsLoad.Error = "Unable to load projects.";
                 return;
             }
 
             allProjects.AddRange(firstPage.Items);
+
             for (var page = 2; page <= firstPage.TotalPages; page++)
             {
                 var response = await ProjectApiService.GetAsync(
                     new ProjectQueryRequest
                     {
                         Page = page,
-                        PageSize = ProjectPageSize
+                        PageSize = PageSizeDefaults.Resource
                     });
+
                 if (response is null)
                 {
                     allProjects.Clear();
-                    projectsError = "Project pagination did not complete. Counts and recent projects are withheld.";
+
+                    projectsLoad.Error =
+                        "Project pagination did not complete. Counts and recent projects are withheld.";
+
                     return;
                 }
 
@@ -428,12 +614,17 @@
         catch (HttpRequestException)
         {
             allProjects.Clear();
-            projectsError = "Projects could not be reached.";
+            projectsLoad.Error = "Projects could not be reached.";
         }
         catch (JsonException)
         {
             allProjects.Clear();
-            projectsError = "The project API returned an invalid response.";
+            projectsLoad.Error =
+                "The project API returned an invalid response.";
+        }
+        finally
+        {
+            projectsLoad.IsLoading = false;
         }
     }
 
@@ -441,8 +632,10 @@
     {
         var firstName = user.FindFirst(ClaimTypes.GivenName)?.Value
             ?? user.FindFirst("given_name")?.Value;
+
         var lastName = user.FindFirst(ClaimTypes.Surname)?.Value
             ?? user.FindFirst("family_name")?.Value;
+
         var fullName = string.Join(
             " ",
             new[] { firstName, lastName }
@@ -462,7 +655,14 @@
     private static string GetManagerName(ProjectResponse project)
     {
         var manager = project.Manager;
+
+        if (manager is null)
+        {
+            return "Unassigned";
+        }
+
         var fullName = $"{manager.FirstName} {manager.LastName}".Trim();
+
         return string.IsNullOrWhiteSpace(fullName)
             ? manager.Email
             : fullName;
@@ -491,5 +691,4 @@
             ProjectStatus.OnHold => "project-status-on-hold",
             _ => "project-status-unknown"
         };
-
 }

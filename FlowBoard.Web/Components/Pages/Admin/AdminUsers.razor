@@ -41,7 +41,7 @@
                 <button type="button"
                         class="btn btn-sm btn-outline-secondary"
                         @onclick="CloseCreateForm"
-                        disabled="@isCreatingUser">
+                        disabled="@createUserOperation.IsSubmitting">
                     Cancel
                 </button>
             </div>
@@ -93,8 +93,8 @@
                     </span>
                     <button type="submit"
                             class="btn btn-primary"
-                            disabled="@isCreatingUser">
-                        @if (isCreatingUser)
+                            disabled="@createUserOperation.IsSubmitting">
+                        @if (createUserOperation.IsSubmitting)
                         {
                             <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
                             <span>Creating…</span>
@@ -152,17 +152,17 @@
     }
 
     <section class="users-summary" aria-label="User summary">
-        @if (isLoading && userPage is null)
+        @if (userList.IsLoading && userList.Data is null)
         {
             <DashboardStatCard Label="Total users"
                                Icon="bi-people"
                                IsLoading="true" />
         }
-        else if (userPage is not null)
+        else if (userList.Data is not null)
         {
             <DashboardStatCard Label="Total users"
                                Icon="bi-people"
-                               Value="@userPage.TotalCount" />
+                               Value="@userList.Data.TotalCount" />
         }
         else
         {
@@ -176,145 +176,96 @@
         }
     </section>
 
-    <section class="users-panel" aria-labelledby="users-directory-title">
-        <div class="users-panel-heading">
-            <div>
-                <h2 id="users-directory-title">User directory</h2>
-                <p>Search user names and email addresses across the organization.</p>
-            </div>
-            @if (userPage is not null)
-            {
-                <span class="users-result-count">@userPage.TotalCount.ToString("N0") users</span>
-            }
-        </div>
+<DataListPanel Title="User directory"
+               TitleId="users-directory-title"
+               Description="Search user names and email addresses across the organization."
+               CountText="@(userList.Data is null ? null : $"{userList.Data.TotalCount:N0} users")"
+               CssClass="users-panel">
 
-        <div class="users-filter-bar">
-            <div class="users-search">
-                <SearchBox Value="@searchText"
-                           ValueChanged="HandleSearchChanged"
-                           Placeholder="Search by name or email" />
-            </div>
-            <button type="button"
-                    class="btn btn-outline-secondary users-clear-button"
-                    disabled="@(string.IsNullOrWhiteSpace(searchText))"
-                    @onclick="ClearSearch">
-                <i class="bi bi-x-circle me-1" aria-hidden="true"></i>
-                Clear search
-            </button>
-        </div>
+    <Toolbar>
+        <DataListToolBar SearchValue="@searchText"
+                         SearchValueChanged="HandleSearchChanged"
+                         SearchPlaceholder="Search by name or email">
 
-        <div class="users-api-note" role="note">
-            <i class="bi bi-info-circle" aria-hidden="true"></i>
-            <p>
-                Deactivating an account blocks new logins and refreshes and revokes its refresh tokens. Existing access tokens remain valid until they expire. Team, workspace, project, board, and task relationships are retained.
-            </p>
-        </div>
+            <Actions>
+                <button type="button"
+                        class="btn btn-outline-secondary users-clear-button"
+                        disabled="@string.IsNullOrWhiteSpace(searchText)"
+                        @onclick="ClearSearch">
+                    <i class="bi bi-x-circle me-1" aria-hidden="true"></i>
+                    Clear search
+                </button>
+            </Actions>
 
-        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        </DataListToolBar>
+    </Toolbar>
+
+    <ChildContent>
+
+        @if (!string.IsNullOrWhiteSpace(userList.Error))
         {
             <div class="users-error" role="alert">
                 <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
-                <span>@errorMessage</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="RetryAsync">
+                <span>@userList.Error</span>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary ms-auto"
+                        @onclick="RetryAsync">
                     Retry
                 </button>
             </div>
         }
-        else if (isLoading)
+        else if (userList.IsLoading)
         {
             <div class="users-loading" role="status" aria-live="polite">
-                <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                <span class="spinner-border spinner-border-sm text-primary"
+                      aria-hidden="true"></span>
                 <span>Loading users…</span>
             </div>
         }
-        else if (userPage is not null && userPage.Items.Count == 0)
+        else if (userList.Data is not null && userList.Data.Items.Count == 0)
         {
-            <EmptyState Title="@(string.IsNullOrWhiteSpace(searchText) ? "No users found" : "No matching users")"
-                        Message="@(string.IsNullOrWhiteSpace(searchText) ? "There are no user accounts to display." : "Try another name or email address, or clear your search.")" />
+            <EmptyState Title="@(string.IsNullOrWhiteSpace(searchText)
+                                    ? "No users found"
+                                    : "No matching users")"
+                        Message="@(string.IsNullOrWhiteSpace(searchText)
+                                    ? "There are no user accounts to display."
+                                    : "Try another name or email address, or clear your search.")" />
         }
-        else if (userPage is not null)
+        else if (userList.Data is not null)
         {
-            <div class="users-table-wrap">
-                <table class="table users-table">
-                    <thead>
-                        <tr>
-                            <th scope="col">User</th>
-                            <th scope="col">Email address</th>
-                            <th scope="col">Role</th>
-                            <th scope="col">Account status</th>
-                            <th scope="col"><span class="visually-hidden">Actions</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var user in userPage.Items)
-                        {
-                            <tr @key="user.UserId">
-                                <td>
-                                    <div class="user-cell">
-                                        <UserAvatar FirstName="@user.FirstName" LastName="@user.LastName" SizeRem="2.3" />
-                                        <span class="user-directory-name">@GetFullName(user)</span>
-                                    </div>
-                                </td>
-                                <td>
-                                    <a class="user-email-link" href="mailto:@user.Email">@user.Email</a>
-                                </td>
-                                <td><span class="user-role-badge @GetRoleClass(user.Role)">@GetRoleLabel(user.Role)</span></td>
-                                <td><span class="user-status-badge @GetStatusClass(user.AccountStatus)">@GetStatusLabel(user.AccountStatus)</span></td>
-                                <td class="users-actions-cell">
-                                    @if (user.Role == "Employee")
-                                    {
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-primary"
-                                                @onclick="() => ConfirmPromotion(user)">
-                                            Promote
-                                        </button>
-                                    }
-                                    @if (user.AccountStatus == "Invitation pending" &&
-                                         user.Role is "Employee" or "Manager")
-                                    {
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-secondary"
-                                                @onclick="() => ConfirmInvitationReissue(user)">
-                                            New setup link
-                                        </button>
-                                    }
-                                    @if (user.AccountStatus == "Deactivated")
-                                    {
-                                        @if (user.UserId != currentUserId)
-                                        {
-                                            <button type="button"
-                                                    class="btn btn-sm btn-outline-primary"
-                                                    @onclick="() => ConfirmReactivation(user)">
-                                                Reactivate
-                                            </button>
-                                        }
-                                    }
-                                    else if (user.UserId != currentUserId)
-                                    {
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-danger"
-                                                @onclick="() => ConfirmDeactivation(user)">
-                                            Deactivate
-                                        </button>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+            <DataTable TItem="UserDirectoryResponse"
+                       Items="@userList.Data.Items"
+                       Columns="@UserColumns"
+                       ItemKeySelector="user => user.UserId"
+                       CssClass="table align-middle">
 
-            <div class="users-mobile-list">
-                @foreach (var user in userPage.Items)
-                {
+                <MobileTemplate Context="user">
+
                     <article class="user-mobile-card" @key="user.UserId">
+
                         <div class="user-cell">
-                            <UserAvatar FirstName="@user.FirstName" LastName="@user.LastName" SizeRem="2.3" />
+                            <UserAvatar FirstName="@user.FirstName"
+                                        LastName="@user.LastName"
+                                        SizeRem="2.3" />
+
                             <div class="user-mobile-identity">
+
                                 <strong>@GetFullName(user)</strong>
-                                <a class="user-email-link" href="mailto:@user.Email">@user.Email</a>
-                                <span class="user-role-badge @GetRoleClass(user.Role)">@GetRoleLabel(user.Role)</span>
-                                <span class="user-status-badge @GetStatusClass(user.AccountStatus)">@GetStatusLabel(user.AccountStatus)</span>
+
+                                <a class="user-email-link"
+                                   href="mailto:@user.Email">
+                                    @user.Email
+                                </a>
+
+                                <span class="user-role-badge @GetRoleClass(user.Role)">
+                                    @GetRoleLabel(user.Role)
+                                </span>
+
+                                <span class="user-status-badge @GetStatusClass(user.AccountStatus)">
+                                    @GetStatusLabel(user.AccountStatus)
+                                </span>
+
                                 @if (user.Role == "Employee")
                                 {
                                     <button type="button"
@@ -323,6 +274,7 @@
                                         Promote to Manager
                                     </button>
                                 }
+
                                 @if (user.AccountStatus == "Invitation pending" &&
                                      user.Role is "Employee" or "Manager")
                                 {
@@ -332,6 +284,7 @@
                                         Create new setup link
                                     </button>
                                 }
+
                                 @if (user.AccountStatus == "Deactivated")
                                 {
                                     @if (user.UserId != currentUserId)
@@ -351,26 +304,33 @@
                                         Deactivate account
                                     </button>
                                 }
+
                             </div>
                         </div>
-                    </article>
-                }
-            </div>
 
-            <Pagination CurrentPage="@userPage.Page"
-                        TotalPages="@userPage.TotalPages"
-                        TotalCount="@userPage.TotalCount"
+                    </article>
+
+                </MobileTemplate>
+
+            </DataTable>
+
+            <Pagination CurrentPage="@userList.Data.Page"
+                        TotalPages="@userList.Data.TotalPages"
+                        TotalCount="@userList.Data.TotalCount"
+                        PageSize="@userList.Data.PageSize"
                         PageChanged="LoadPageAsync" />
         }
-    </section>
 
+    </ChildContent>
+
+</DataListPanel>
     <ConfirmationDialog IsOpen="@(userToPromote is not null)"
                         Title="Promote to Manager?"
                         Role="dialog"
                         IconClass="@null"
                         ConfirmText="Confirm promotion"
                         ConfirmButtonClass="btn-primary"
-                        IsBusy="@isUserActionRunning"
+                        IsBusy="@userActionOperation.IsSubmitting"
                         OnCancel="CancelConfirmation"
                         OnConfirm="PromoteSelectedUserAsync">
         @if (userToPromote is not null)
@@ -389,7 +349,7 @@
                         IconClass="@null"
                         ConfirmText="Create new link"
                         ConfirmButtonClass="btn-primary"
-                        IsBusy="@isUserActionRunning"
+                        IsBusy="@userActionOperation.IsSubmitting"
                         OnCancel="CancelConfirmation"
                         OnConfirm="ReissueSelectedInvitationAsync">
         @if (userToReissueInvitation is not null)
@@ -407,7 +367,7 @@
                         IconClass="@null"
                         ConfirmText="Deactivate account"
                         ConfirmButtonClass="btn-danger"
-                        IsBusy="@isUserActionRunning"
+                        IsBusy="@userActionOperation.IsSubmitting"
                         OnCancel="CancelConfirmation"
                         OnConfirm="DeactivateSelectedUserAsync">
         @if (userToDeactivate is not null)
@@ -426,7 +386,7 @@
                         IconClass="@null"
                         ConfirmText="Reactivate account"
                         ConfirmButtonClass="btn-primary"
-                        IsBusy="@isUserActionRunning"
+                        IsBusy="@userActionOperation.IsSubmitting"
                         OnCancel="CancelConfirmation"
                         OnConfirm="ReactivateSelectedUserAsync">
         @if (userToReactivate is not null)
@@ -440,33 +400,139 @@
 </div>
 
 @code {
-    private const int DefaultPageSize = 10;
+    private const int DefaultPageSize = PageSizeDefaults.Default;
 
+    // User directory state
+    private PagedListState<UserDirectoryResponse> userList = new()
+    {
+        PageSize = DefaultPageSize,
+        IsLoading = true
+    };
+
+    // User forms and confirmation targets
     private CreateUserRequest createUserRequest = new()
     {
         Role = "Employee"
     };
-    private PagedResponse<UserDirectoryResponse>? userPage;
+
     private CreateUserResponse? issuedInvitation;
+
     private UserDirectoryResponse? userToPromote;
     private UserDirectoryResponse? userToReissueInvitation;
     private UserDirectoryResponse? userToDeactivate;
     private UserDirectoryResponse? userToReactivate;
+
+    // Invitation state
     private string? invitationLink;
-    private string? searchText;
-    private string? errorMessage;
-    private bool isCreateFormOpen;
-    private bool isCreatingUser;
-    private bool isUserActionRunning;
     private bool isInvitationReissued;
-    private bool isLoading = true;
-    private int currentPage = 1;
-    private int pageSize = DefaultPageSize;
+
+    // Search
+    private string? searchText;
+
+    // UI state
+    private bool isCreateFormOpen;
+
+    // Async operations
+    private AsyncOperationState createUserOperation = new();
+    private AsyncOperationState userActionOperation = new();
+
+    // Current user
     private Guid currentUserId;
+
+    // Request management
     private CancellationTokenSource? activeRequest;
-    private CancellationTokenSource? searchDebounce;
+    private readonly DebouncedAction searchDebounce = new();
     private long requestVersion;
     private bool isDisposed;
+
+
+  
+   
+    private IReadOnlyList<DataTableColumn<UserDirectoryResponse>> UserColumns =>
+[
+    new()
+    {
+        Header = "User",
+        Template = user => @<div class="user-cell">
+            <UserAvatar FirstName="@user.FirstName"
+                        LastName="@user.LastName"
+                        SizeRem="2.3" />
+
+            <span class="user-directory-name">
+                @GetFullName(user)
+            </span>
+        </div>
+    },
+    new()
+    {
+        Header = "Email address",
+        Template = user => @<a class="user-email-link"
+                               href="@($"mailto:{user.Email}")">
+            @user.Email
+        </a>
+    },
+    new()
+    {
+        Header = "Role",
+        Template = user => @<span class="user-role-badge @GetRoleClass(user.Role)">
+            @GetRoleLabel(user.Role)
+        </span>
+    },
+    new()
+    {
+        Header = "Account status",
+        Template = user => @<span class="user-status-badge @GetStatusClass(user.AccountStatus)">
+            @GetStatusLabel(user.AccountStatus)
+        </span>
+    },
+    new()
+    {
+        Header = "Actions",
+        CellClass = "users-actions-cell",
+        Template = user => @<div class="users-actions-cell">
+
+            @if (user.Role == "Employee")
+            {
+                <button type="button"
+                        class="btn btn-sm btn-outline-primary"
+                        @onclick="() => ConfirmPromotion(user)">
+                    Promote
+                </button>
+            }
+
+            @if (user.AccountStatus == "Invitation pending" &&
+                 user.Role is "Employee" or "Manager")
+            {
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        @onclick="() => ConfirmInvitationReissue(user)">
+                    New setup link
+                </button>
+            }
+
+            @if (user.AccountStatus == "Deactivated")
+            {
+                @if (user.UserId != currentUserId)
+                {
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary"
+                            @onclick="() => ConfirmReactivation(user)">
+                        Reactivate
+                    </button>
+                }
+            }
+            else if (user.UserId != currentUserId)
+            {
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        @onclick="() => ConfirmDeactivation(user)">
+                    Deactivate
+                </button>
+            }
+
+        </div>
+    }
+];
 
     protected override async Task OnInitializedAsync()
     {
@@ -486,7 +552,7 @@
 
     private void CloseCreateForm()
     {
-        if (!isCreatingUser)
+        if (!createUserOperation.IsSubmitting)
         {
             isCreateFormOpen = false;
         }
@@ -494,12 +560,11 @@
 
     private async Task CreateUserAsync()
     {
-        if (isCreatingUser)
-        {
+        if (createUserOperation.IsSubmitting)
             return;
-        }
 
-        isCreatingUser = true;
+        createUserOperation.IsSubmitting = true;
+        createUserOperation.Error = null;
         try
         {
             issuedInvitation = await UserManagementApiService.CreateUserAsync(
@@ -529,7 +594,7 @@
         }
         finally
         {
-            isCreatingUser = false;
+            createUserOperation.IsSubmitting = false;
         }
     }
 
@@ -608,7 +673,7 @@
 
     private void CancelConfirmation()
     {
-        if (!isUserActionRunning)
+        if (!userActionOperation.IsSubmitting)
         {
             userToPromote = null;
             userToReissueInvitation = null;
@@ -620,12 +685,11 @@
     private async Task PromoteSelectedUserAsync()
     {
         var user = userToPromote;
-        if (user is null || isUserActionRunning)
-        {
+        if (userActionOperation.IsSubmitting || user is null)
             return;
-        }
 
-        isUserActionRunning = true;
+        userActionOperation.IsSubmitting = true;
+        userActionOperation.Error = null;
         try
         {
             var result =
@@ -634,7 +698,7 @@
             userToPromote = null;
             ToastService.Success(
                 $"{GetFullName(result.User)} was promoted to Manager.");
-            await LoadPageAsync(currentPage);
+            await 	LoadPageAsync(userList.CurrentPage);
         }
         catch (UserManagementApiException exception)
         {
@@ -652,19 +716,24 @@
         }
         finally
         {
-            isUserActionRunning = false;
+            userActionOperation.IsSubmitting  = false;
         }
     }
 
     private async Task ReissueSelectedInvitationAsync()
     {
         var user = userToReissueInvitation;
-        if (user is null || isUserActionRunning)
+        if (userActionOperation.IsSubmitting ||
+            user is null)
         {
             return;
         }
 
-        isUserActionRunning = true;
+        userActionOperation.IsSubmitting = true;
+        userActionOperation.Error = null;
+        
+       
+
         try
         {
             issuedInvitation =
@@ -676,7 +745,7 @@
             userToReissueInvitation = null;
             ToastService.Success(
                 $"A new password setup link was created for {GetFullName(user)}.");
-            await LoadPageAsync(currentPage);
+            await 	LoadPageAsync(userList.CurrentPage);
         }
         catch (UserManagementApiException exception)
         {
@@ -694,25 +763,26 @@
         }
         finally
         {
-            isUserActionRunning = false;
+            userActionOperation.IsSubmitting = false;
         }
     }
 
     private async Task DeactivateSelectedUserAsync()
     {
         var user = userToDeactivate;
-        if (user is null || isUserActionRunning)
+        if (user is null || userActionOperation.IsSubmitting)
         {
             return;
         }
 
-        isUserActionRunning = true;
+        userActionOperation.IsSubmitting = true;
+        userActionOperation.Error = null;
         try
         {
             await UserManagementApiService.DeactivateUserAsync(user.UserId);
             userToDeactivate = null;
             ToastService.Success($"{GetFullName(user)} was deactivated.");
-            await LoadPageAsync(currentPage);
+            await 	LoadPageAsync(userList.CurrentPage);
         }
         catch (UserManagementApiException exception)
         {
@@ -730,25 +800,26 @@
         }
         finally
         {
-            isUserActionRunning = false;
+            userActionOperation.IsSubmitting = false;
         }
     }
 
     private async Task ReactivateSelectedUserAsync()
     {
         var user = userToReactivate;
-        if (user is null || isUserActionRunning)
+        if (user is null || userActionOperation.IsSubmitting)
         {
             return;
         }
 
-        isUserActionRunning = true;
+        userActionOperation.IsSubmitting = true;
+        userActionOperation.Error = null;
         try
         {
             await UserManagementApiService.ReactivateUserAsync(user.UserId);
             userToReactivate = null;
             ToastService.Success($"{GetFullName(user)} was reactivated.");
-            await LoadPageAsync(currentPage);
+            await 	LoadPageAsync(userList.CurrentPage);
         }
         catch (UserManagementApiException exception)
         {
@@ -766,120 +837,116 @@
         }
         finally
         {
-            isUserActionRunning = false;
+            userActionOperation.IsSubmitting = false;
         }
     }
 
-    private async Task HandleSearchChanged(string? value)
+    private Task HandleSearchChanged(string? value)
     {
         searchText = value?.Trim();
-        currentPage = 1;
-        searchDebounce?.Cancel();
-        searchDebounce?.Dispose();
-        searchDebounce = new CancellationTokenSource();
+        userList.CurrentPage = 1;
 
-        var token = searchDebounce.Token;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(300), token);
-            await LoadPageAsync(1, token);
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-        }
+        return searchDebounce.ExecuteAsync(
+            () => LoadPageAsync(1));
     }
 
     private async Task ClearSearch()
     {
         if (string.IsNullOrWhiteSpace(searchText))
-        {
             return;
-        }
+
+        searchDebounce.Cancel();
 
         searchText = null;
-        searchDebounce?.Cancel();
+        userList.CurrentPage = 1;
+
         await LoadPageAsync(1);
     }
 
-    private async Task LoadPageAsync(int page)
+    private Task LoadPageAsync(int page)
     {
-        await LoadPageAsync(page, CancellationToken.None);
+        return LoadPageAsync(page, CancellationToken.None);
     }
 
-    private async Task LoadPageAsync(int page, CancellationToken debounceToken)
+    private async Task LoadPageAsync(
+        int page,
+        CancellationToken debounceToken)
     {
         if (isDisposed || debounceToken.IsCancellationRequested)
-        {
             return;
-        }
 
         activeRequest?.Cancel();
         activeRequest?.Dispose();
-        activeRequest = CancellationTokenSource.CreateLinkedTokenSource(debounceToken);
+
+        activeRequest = CancellationTokenSource.CreateLinkedTokenSource(
+            debounceToken);
+
         var cancellationToken = activeRequest.Token;
         var version = ++requestVersion;
 
-        currentPage = page;
-        isLoading = true;
-        errorMessage = null;
+        userList.CurrentPage = page;
+        userList.IsLoading = true;
+        userList.Error = null;
 
         try
         {
             var response = await UserDirectoryApiService.GetAsync(
                 new PagedSearchRequest
                 {
-                    Page = page,
-                    PageSize = pageSize,
+                    Page = userList.CurrentPage,
+                    PageSize = userList.PageSize,
                     Search = string.IsNullOrWhiteSpace(searchText)
                         ? null
                         : searchText
                 },
                 cancellationToken);
 
-            if (version != requestVersion || cancellationToken.IsCancellationRequested)
+            if (version != requestVersion ||
+                cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
             if (response is null)
             {
-                userPage = null;
-                errorMessage =
-                    "The user directory could not be loaded. The request may have been rejected or the service may be unavailable.";
+                userList.Data = null;
+                userList.Error = "Unable to load users. Please try again.";
                 return;
             }
 
-            userPage = response;
+            userList.Data = response;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
+            // A newer request or search superseded this request.
         }
         catch (HttpRequestException)
         {
             if (version == requestVersion)
             {
-                userPage = null;
-                errorMessage = "The user directory could not be reached. Check your connection and try again.";
+                userList.Data = null;
+                userList.Error = "Unable to connect to the server. Please try again.";
             }
         }
         catch (JsonException)
         {
             if (version == requestVersion)
             {
-                userPage = null;
-                errorMessage = "The user directory returned an invalid response. Try again later.";
+                userList.Data = null;
+                userList.Error = "Unable to process the server response.";
             }
         }
         finally
         {
             if (version == requestVersion && !isDisposed)
             {
-                isLoading = false;
+                userList.IsLoading = false;
             }
         }
     }
 
-    private Task RetryAsync() => LoadPageAsync(currentPage);
+    private Task RetryAsync() => 	LoadPageAsync(userList.CurrentPage);
 
     private static string GetFullName(UserDirectoryResponse user)
     {
@@ -914,8 +981,7 @@
     public void Dispose()
     {
         isDisposed = true;
-        searchDebounce?.Cancel();
-        searchDebounce?.Dispose();
+        searchDebounce.Dispose();
         activeRequest?.Cancel();
         activeRequest?.Dispose();
     }

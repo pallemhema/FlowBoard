@@ -1,150 +1,191 @@
 @page "/employee/boards"
+
 @attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
 @implements IDisposable
-
-@using System.Net.Http
-@using System.Text.Json
 
 @inject IBoardApiService BoardApiService
 
 <PageTitle>My Boards | FlowBoard</PageTitle>
 
 <div class="page-shell employee-boards">
+
     <PageHeader Title="My boards"
                 Eyebrow="Your work"
                 Description="Boards you are authorized to access, with their columns and cards." />
 
-    <div class="employee-boards-search">
-        <SearchBox @bind-Value="search"
-                   @bind-Value:after="SearchChangedAsync"
-                   Placeholder="Search boards..." />
-    </div>
+    <DataListPanel Title="My boards"
+                   TitleId="employee-boards-title"
+                   Description="Browse and search boards you can access."
+                   CountText="@(boardPage is not null &&
+                                !boardsLoad.IsLoading &&
+                                boardsLoad.Error is null
+                       ? $"{boardPage.TotalCount} {(boardPage.TotalCount == 1 ? "board" : "boards")}"
+                       : null)"
+                   CssClass="employee-boards-panel">
 
-    @if (isLoading)
-    {
-        <div class="boards-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-            <span>Loading your boards...</span>
-        </div>
-    }
-    else if (!string.IsNullOrWhiteSpace(errorMessage))
-    {
-        <div class="boards-error" role="alert">
-            <span>@errorMessage</span>
-            <button type="button"
-                    class="btn btn-sm btn-outline-danger"
-                    @onclick="() => LoadBoardsAsync(page)">
-                Try again
-            </button>
-        </div>
-    }
-    else if (boardPage is { Items.Count: 0 })
-    {
-        <EmptyState Title="@(string.IsNullOrWhiteSpace(search) ? "No boards available" : "No boards match your search")"
-                    Message="@(string.IsNullOrWhiteSpace(search) ? "Boards you can access will appear here." : "Try changing your search.")" />
-    }
-    else if (boardPage is not null)
-    {
-        <div class="boards-results-heading">
-            <p class="mb-0">@boardPage.TotalCount @(boardPage.TotalCount == 1 ? "board" : "boards")</p>
-        </div>
+        <Toolbar>
+                <DataListToolBar SearchValue="@search"
+                         SearchValueChanged="SearchChangedAsync"
+                         SearchPlaceholder="Search boards..." />
+        </Toolbar>
 
-        <section class="employee-board-grid" aria-label="Boards you can access">
-            @foreach (var board in boardPage.Items)
+        <ChildContent>
+
+            @if (boardsLoad.IsLoading)
             {
-                <article class="employee-board-card" @key="board.Id">
-                    <div class="employee-board-card-header">
-                        <div class="employee-board-icon" aria-hidden="true">
-                            <i class="bi bi-columns-gap"></i>
-                        </div>
-                        <span class="employee-board-purpose">
-                            @GetPurposeLabel(board.Purpose)
-                        </span>
-                    </div>
-
-                    <h2>@board.Name</h2>
-                    <p class="employee-board-description">
-                        @(string.IsNullOrWhiteSpace(board.Description)
-                            ? "No description provided."
-                            : board.Description)
-                    </p>
-
-                    <dl class="employee-board-details">
-                        <div>
-                            <dt>Workspace</dt>
-                            <dd>@board.WorkspaceName</dd>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(board.ProjectName))
-                        {
-                            <div>
-                                <dt>Project</dt>
-                                <dd>@board.ProjectName</dd>
-                            </div>
-                        }
-                        <div>
-                            <dt>Your board role</dt>
-                            <dd>@GetBoardRoleLabel(board)</dd>
-                        </div>
-                    </dl>
-
-                    <a class="btn btn-outline-primary employee-board-open"
-                       href="@($"/workspaces/{board.WorkspaceId}/boards/{board.Id}")"
-                       aria-label="@($"Open board {board.Name}")">
-                        Open board
-                        <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
-                    </a>
-                </article>
+                <div class="boards-loading" role="status" aria-live="polite">
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
+                    <span>Loading your boards...</span>
+                </div>
             }
-        </section>
+            else if (!string.IsNullOrWhiteSpace(boardsLoad.Error))
+            {
+                <div class="boards-error" role="alert">
 
-        <Pagination CurrentPage="page"
-                    TotalPages="boardPage.TotalPages"
-                    TotalCount="boardPage.TotalCount"
-                    PageChanged="LoadBoardsAsync" />
-    }
+                    <span>@boardsLoad.Error</span>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-danger"
+                            @onclick="() => LoadBoardsAsync(page)">
+                        Try again
+                    </button>
+
+                </div>
+            }
+            else if (boardPage is { Items.Count: 0 })
+            {
+                <EmptyState Title="@(string.IsNullOrWhiteSpace(search)
+                                      ? "No boards available"
+                                      : "No boards match your search")"
+                            Message="@(string.IsNullOrWhiteSpace(search)
+                                        ? "Boards you can access will appear here."
+                                        : "Try changing your search.")" />
+            }
+            else if (boardPage is not null)
+            {
+                <section class="employee-board-grid"
+                         aria-label="Boards you can access">
+
+                    @foreach (var board in boardPage.Items)
+                    {
+                        <article class="employee-board-card"
+                                 @key="board.Id">
+
+                            <div class="employee-board-card-header">
+
+                                <div class="employee-board-icon"
+                                     aria-hidden="true">
+                                    <i class="bi bi-columns-gap"></i>
+                                </div>
+
+                                <span class="employee-board-purpose">
+                                    @GetPurposeLabel(board.Purpose)
+                                </span>
+
+                            </div>
+
+                            <h2>@board.Name</h2>
+
+                            <p class="employee-board-description">
+                                @(string.IsNullOrWhiteSpace(board.Description)
+                                    ? "No description provided."
+                                    : board.Description)
+                            </p>
+
+                            <dl class="employee-board-details">
+
+                                <div>
+                                    <dt>Workspace</dt>
+                                    <dd>@board.WorkspaceName</dd>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(board.ProjectName))
+                                {
+                                    <div>
+                                        <dt>Project</dt>
+                                        <dd>@board.ProjectName</dd>
+                                    </div>
+                                }
+
+                                <div>
+                                    <dt>Your board role</dt>
+                                    <dd>@GetBoardRoleLabel(board)</dd>
+                                </div>
+
+                            </dl>
+
+                            <a class="btn btn-outline-primary employee-board-open"
+                               href="@($"/workspaces/{board.WorkspaceId}/boards/{board.Id}")"
+                               aria-label="@($"Open board {board.Name}")">
+
+                                Open board
+
+                                <i class="bi bi-arrow-right ms-1"
+                                   aria-hidden="true"></i>
+
+                            </a>
+
+                        </article>
+                    }
+
+                </section>
+
+                <Pagination CurrentPage="@boardPage.Page"
+                            TotalPages="@boardPage.TotalPages"
+                            TotalCount="@boardPage.TotalCount"
+                            PageSize="@boardPage.PageSize"
+                            PageChanged="LoadBoardsAsync" />
+            }
+
+        </ChildContent>
+
+    </DataListPanel>
+
 </div>
 
 @code {
-    private const int PageSize = 12;
+    private const int PageSize = PageSizeDefaults.Default;
 
     private PagedResponse<BoardResponse>? boardPage;
+
+    private readonly AsyncOperationState boardsLoad = new();
+
+    private readonly DebouncedAction searchDebounce = new();
+
     private string? search;
-    private string? errorMessage;
-    private bool isLoading;
+
     private int page = 1;
+
     private long loadVersion;
+
     private CancellationTokenSource? activeLoadCts;
-    private CancellationTokenSource? searchDebounceCts;
 
-    protected override Task OnInitializedAsync() => LoadBoardsAsync(1);
-
-    private async Task SearchChangedAsync()
+    protected override Task OnInitializedAsync() =>
+        LoadBoardsAsync(1);
+    private Task SearchChangedAsync(string? value)
     {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
-        var debounceCts = searchDebounceCts = new CancellationTokenSource();
+        search = value?.Trim();
 
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), debounceCts.Token);
-            await LoadBoardsAsync(1);
-        }
-        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
-        {
-        }
+        return searchDebounce.ExecuteAsync(
+            () => LoadBoardsAsync(1));
     }
 
     private async Task LoadBoardsAsync(int requestedPage)
     {
         page = requestedPage;
-        errorMessage = null;
+
+        boardsLoad.Error = null;
+
         activeLoadCts?.Cancel();
         activeLoadCts?.Dispose();
         activeLoadCts = null;
+
         var requestVersion = ++loadVersion;
 
         var loadCts = activeLoadCts = new CancellationTokenSource();
-        isLoading = true;
+
+        boardsLoad.IsLoading = true;
 
         try
         {
@@ -165,7 +206,7 @@
             if (result is null)
             {
                 boardPage = null;
-                errorMessage = "Unable to load your boards. Please try again.";
+                boardsLoad.Error = "Unable to load your boards. Please try again.";
                 return;
             }
 
@@ -179,7 +220,7 @@
             if (requestVersion == loadVersion)
             {
                 boardPage = null;
-                errorMessage = "The board service could not be reached.";
+                boardsLoad.Error = "The board service could not be reached.";
             }
         }
         catch (JsonException)
@@ -187,14 +228,14 @@
             if (requestVersion == loadVersion)
             {
                 boardPage = null;
-                errorMessage = "The board service returned an invalid response.";
+                boardsLoad.Error = "The board service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == loadVersion)
             {
-                isLoading = false;
+                boardsLoad.IsLoading = false;
             }
         }
     }
@@ -210,8 +251,9 @@
 
     public void Dispose()
     {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
+        searchDebounce.Cancel();
+        searchDebounce.Dispose();
+
         activeLoadCts?.Cancel();
         activeLoadCts?.Dispose();
     }

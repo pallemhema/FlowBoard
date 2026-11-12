@@ -2,6 +2,8 @@
   max-width: 1540px;
 }
 
+/* Loading */
+
 .employee-dashboard-loading[b-h78ev156ik],
 .employee-inline-loading[b-h78ev156ik] {
   display: flex;
@@ -16,12 +18,16 @@
   margin: -0.75rem 0 1.1rem;
 }
 
+/* Dashboard statistics */
+
 .employee-stat-grid[b-h78ev156ik] {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1rem;
   margin-bottom: 1.25rem;
 }
+
+/* Upcoming tasks panel */
 
 .employee-dashboard-panel[b-h78ev156ik] {
   min-width: 0;
@@ -32,32 +38,7 @@
   box-shadow: 0 1px 2px rgba(32, 36, 58, 0.035);
 }
 
-.employee-panel-heading[b-h78ev156ik] {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-}
-
-.employee-panel-heading h2[b-h78ev156ik] {
-  margin: 0;
-  color: var(--flowboard-ink);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
-
-.employee-panel-icon[b-h78ev156ik] {
-  display: grid;
-  width: 2.25rem;
-  height: 2.25rem;
-  flex: 0 0 2.25rem;
-  place-items: center;
-  border-radius: 0.65rem;
-  color: var(--flowboard-primary);
-  background: var(--flowboard-primary-soft);
-}
+/* Task list */
 
 .employee-task-list[b-h78ev156ik] {
   display: grid;
@@ -112,6 +93,8 @@
   font-size: 0.68rem;
 }
 
+/* Task metadata */
+
 .employee-task-meta[b-h78ev156ik] {
   display: flex;
   flex: 0 0 auto;
@@ -125,6 +108,8 @@
   font-size: 0.74rem;
   font-weight: 600;
 }
+
+/* Task priority */
 
 .employee-priority[b-h78ev156ik] {
   padding: 0.22rem 0.48rem;
@@ -158,6 +143,8 @@
   background: #f0f1f5;
 }
 
+/* Error and informational messages */
+
 .employee-dashboard-error[b-h78ev156ik] {
   padding: 0.85rem 1rem;
   border: 1px solid #f3d9d7;
@@ -174,6 +161,8 @@
   font-size: 0.72rem;
   line-height: 1.5;
 }
+
+/* Responsive layout */
 
 @media (max-width: 1200px) {
   .employee-stat-grid[b-h78ev156ik] {

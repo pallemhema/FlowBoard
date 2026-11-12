@@ -13,6 +13,10 @@ public interface IBoardService
         BoardQueryRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<BoardProjectOptionResponse>> GetWorkspaceProjectsAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken = default);
+
     Task<BoardResponse> GetByIdAsync(
         Guid boardId,
         CancellationToken cancellationToken = default);

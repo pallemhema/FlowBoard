@@ -1,70 +1,168 @@
-<EditForm Model="@Model"
-          OnValidSubmit="@OnSubmit">
 
+
+<EditForm Model="@Model"
+          OnValidSubmit="@OnSubmit"
+          FormName="@FormName">
     <DataAnnotationsValidator />
 
-    <div class="mb-3">
+    <div class="board-form-grid">
 
-        <label class="form-label" for="board-name">
-            Board Name
-        </label>
+        <div class="mb-3">
+            <label class="form-label" for="board-name">
+                Board name
+            </label>
 
-        <InputText
-            id="board-name"
-            @bind-Value="Model.Name"
-            class="form-control"
-            placeholder="Enter board name" />
+            <InputText id="board-name"
+                       class="form-control"
+                       @bind-Value="Model.Name"
+                       placeholder="e.g. Product launch" />
 
-        <ValidationMessage
-            For="@(() => Model.Name)" />
+            <ValidationMessage For="@(() => Model.Name)" />
+        </div>
 
-    </div>
+        @if (ShowPurpose)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="board-purpose">
+                    Board purpose
+                </label>
 
-    <div class="mb-3">
+                <InputSelect id="board-purpose"
+                             class="form-select"
+                             @bind-Value="Model.Purpose"
+                             @bind-Value:after="HandlePurposeChanged">
+                    <option value="@BoardPurpose.Project">Project board</option>
+                    <option value="@BoardPurpose.GeneralLearning">
+                        General/Learning board
+                    </option>
+                </InputSelect>
+            </div>
+        }
 
-        <label class="form-label" for="board-description">
-            Description
-        </label>
+        @if (ShowWorkspace)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="board-workspace">
+                    Workspace
+                </label>
 
-        <InputTextArea
-            id="board-description"
-            @bind-Value="Model.Description"
-            class="form-control"
-            placeholder="Enter board description" />
+                @if (IsWorkspaceReadOnly)
+                {
+                    <input id="board-workspace"
+                        class="form-control"
+                        value="@Workspaces.FirstOrDefault(
+                            workspace => workspace.Id == Model.WorkspaceId)?.Name"
+                        disabled />
 
-        <ValidationMessage
-            For="@(() => Model.Description)" />
+                    <div class="form-text">
+                        The board's workspace cannot be changed through the existing API.
+                    </div>
+                }
+                else
+                {
+                    <InputSelect id="board-workspace"
+                                class="form-select"
+                                @bind-Value="Model.WorkspaceId"
+                                @bind-Value:after="WorkspaceChanged"
+                                disabled="@IsLoadingWorkspaces">
+                        <option value="@Guid.Empty">Select a workspace</option>
+
+                        @foreach (var workspace in Workspaces)
+                        {
+                            <option value="@workspace.Id">@workspace.Name</option>
+                        }
+                    </InputSelect>
+                }
+            </div>
+        }
+
+        @if (ShowPurpose && Model.Purpose == BoardPurpose.Project)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="board-project">
+                    Project
+                </label>
+
+                <InputSelect id="board-project"
+                             class="form-select"
+                             @bind-Value="Model.ProjectId"
+                             disabled="@(Model.WorkspaceId == Guid.Empty || IsLoadingProjects)">
+                    <option value="">Select a project in this workspace</option>
+
+                    @foreach (var project in Projects)
+                    {
+                        <option value="@project.ProjectId">@project.Name</option>
+                    }
+                </InputSelect>
+
+                @if (IsLoadingProjects)
+                {
+                    <div class="form-text">Loading workspace projects...</div>
+                }
+                else if (Model.WorkspaceId != Guid.Empty && Projects.Count == 0)
+                {
+                    <div class="form-text">
+                        This workspace has no projects available for a project board.
+                    </div>
+                }
+            </div>
+        }
+        else if (ShowPurpose && Model.Purpose == BoardPurpose.GeneralLearning)
+        {
+            <div class="board-form-note">
+                <i class="bi bi-info-circle" aria-hidden="true"></i>
+                <span>
+                    A General/Learning board belongs directly to its workspace
+                    and cannot be associated with a project.
+                </span>
+            </div>
+        }
+
+        <div class="mb-3 board-form-wide">
+            <label class="form-label" for="board-description">
+                Description
+                <span class="text-muted fw-normal">(optional)</span>
+            </label>
+
+            <InputTextArea id="board-description"
+                           class="form-control board-description-input"
+                           @bind-Value="Model.Description"
+                           placeholder="Describe the board's purpose and scope." />
+
+            <ValidationMessage For="@(() => Model.Description)" />
+        </div>
 
     </div>
 
     @if (!string.IsNullOrWhiteSpace(ErrorMessage))
     {
-        <div class="alert alert-danger" role="alert">
+        <div class="board-error compact" role="alert">
             @ErrorMessage
         </div>
     }
 
-    <button type="submit"
-            class="btn btn-primary"
-            disabled="@IsLoading">
+    <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button"
+                class="btn btn-outline-secondary"
+                @onclick="OnCancel"
+                disabled="@IsLoading">
+            Cancel
+        </button>
 
-        @(IsLoading ? LoadingText : SubmitText)
-
-    </button>
-
-    <button type="button"
-            class="btn btn-secondary ms-2"
-            @onclick="OnCancel"
-            disabled="@IsLoading">
-
-        Cancel
-
-    </button>
-
+        <button type="submit"
+                class="btn btn-primary"
+                disabled="@IsLoading">
+            @(IsLoading ? LoadingText : SubmitText)
+        </button>
+    </div>
 </EditForm>
 
 @code {
+    [Parameter]
+public bool IsWorkspaceReadOnly { get; set; }
 
+    [Parameter]
+    public string? FormName { get; set; }
     [Parameter, EditorRequired]
     public BoardFormModel Model { get; set; } = null!;
 
@@ -85,4 +183,44 @@
 
     [Parameter]
     public string? ErrorMessage { get; set; }
+
+    [Parameter]
+    public bool ShowPurpose { get; set; }
+
+    [Parameter]
+    public bool ShowWorkspace { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<WorkspaceResponse> Workspaces { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<BoardProjectOptionResponse> Projects { get; set; } = [];
+
+    [Parameter]
+    public bool IsLoadingWorkspaces { get; set; }
+
+    [Parameter]
+    public bool IsLoadingProjects { get; set; }
+
+    [Parameter]
+    public EventCallback OnPurposeChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnWorkspaceChanged { get; set; }
+
+    private Task HandlePurposeChanged()
+    {
+        if (Model.Purpose == BoardPurpose.GeneralLearning)
+        {
+            Model.ProjectId = null;
+        }
+
+        return OnPurposeChanged.InvokeAsync();
+    }
+
+    private Task WorkspaceChanged()
+    {
+        Model.ProjectId = null;
+        return OnWorkspaceChanged.InvokeAsync();
+    }
 }

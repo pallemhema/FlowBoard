@@ -2,13 +2,10 @@
 @attribute [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
 @implements IDisposable
 
-@using System.Text.Json
-@using FlowBoard.Shared.DTOs.ManagerEmployees
 
 @inject IManagerEmployeeApiService ManagerEmployeeApiService
 
 <PageTitle>My Assignments | FlowBoard</PageTitle>
-
 <div class="page-shell manager-assignments-page">
     <PageHeader Title="My Assignments"
                 Eyebrow="People"
@@ -26,17 +23,17 @@
         </span>
     </div>
 
-    @if (isLoadingManager)
+    @if (reportingManagerLoad.IsLoading)
     {
         <div class="manager-assignments-loading" role="status">
             <span class="spinner-border spinner-border-sm text-primary"></span>
             <span>Loading your reporting manager...</span>
         </div>
     }
-    else if (!string.IsNullOrWhiteSpace(managerError))
+    else if (!string.IsNullOrWhiteSpace(reportingManagerLoad.Error))
     {
         <div class="manager-assignments-error" role="alert">
-            @managerError
+            @reportingManagerLoad.Error
             <button class="btn btn-sm btn-outline-secondary ms-auto"
                     @onclick="LoadReportingManagerAsync">
                 Retry
@@ -84,10 +81,10 @@
                 <p>These relationships are separate from team membership and work access.</p>
             </div>
             <div class="manager-assignments-heading-meta">
-                @if (employeesPage is not null)
+                @if (employeeList.Data is not null)
                 {
                     <span class="manager-assignments-total">
-                        @employeesPage.TotalCount @(employeesPage.TotalCount == 1 ? "employee" : "employees")
+                        @employeeList.Data.TotalCount @(employeeList.Data.TotalCount == 1 ? "employee" : "employees")
                     </span>
                 }
                 <span class="manager-assignments-icon" aria-hidden="true">
@@ -96,34 +93,34 @@
             </div>
         </div>
 
-        @if (isLoading)
+        @if (employeeList.IsLoading)
         {
             <div class="manager-assignments-loading" role="status" aria-live="polite">
                 <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
                 <span>Loading your direct reports…</span>
             </div>
         }
-        else if (!string.IsNullOrWhiteSpace(loadError))
+        else if (!string.IsNullOrWhiteSpace(employeeList.Error))
         {
             <div class="manager-assignments-error" role="alert">
                 <i class="bi bi-exclamation-circle" aria-hidden="true"></i>
-                <span>@loadError</span>
+                <span>@employeeList.Error</span>
                 <button type="button"
                         class="btn btn-sm btn-outline-secondary ms-auto"
-                        @onclick="() => LoadEmployeesAsync(currentPage)">
+                        @onclick="() => LoadEmployeesAsync(employeeList.CurrentPage)">
                     Retry
                 </button>
             </div>
         }
-        else if (employeesPage is { Items.Count: 0 })
+        else if (employeeList.Data is { Items.Count: 0 })
         {
             <EmptyState Title="No direct reports"
                         Message="Employees assigned to you through Manager-Employee relationships will appear here." />
         }
-        else if (employeesPage is not null)
+        else if (employeeList.Data is not null)
         {
             <div class="manager-assignment-grid">
-                @foreach (var relationship in employeesPage.Items)
+                @foreach (var relationship in employeeList.Data.Items)
                 {
                     <button type="button"
                             class="manager-assignment-card"
@@ -148,13 +145,11 @@
                 }
             </div>
 
-            @if (employeesPage.TotalCount > employeesPage.PageSize)
-            {
-                <Pagination CurrentPage="@employeesPage.Page"
-                            TotalPages="@employeesPage.TotalPages"
-                            TotalCount="@employeesPage.TotalCount"
-                            PageChanged="LoadEmployeesAsync" />
-            }
+            <Pagination CurrentPage="@employeeList.Data.Page"
+                        TotalPages="@employeeList.Data.TotalPages"
+                        TotalCount="@employeeList.Data.TotalCount"
+                        PageSize="@employeeList.Data.PageSize"
+                        PageChanged="LoadEmployeesAsync" />
         }
     </section>
 </div>
@@ -235,81 +230,104 @@
 }
 
 @code {
-    private const int PageSize = 10;
+    private const int PageSize = PageSizeDefaults.Default;
 
-    private PagedResponse<ManagerEmployeeResponse>? employeesPage;
-    private ManagerEmployeeResponse? selectedEmployee;
-    private string? loadError;
-    private bool isLoading = true;
-    private bool disposed;
-    private int currentPage = 1;
-    private int requestVersion;
-    private CancellationTokenSource? activeRequest;
-    private PagedResponse<ManagerEmployeeResponse>? reportingManagers;
-private bool isLoadingManager = true;
-private string? managerError;
-
-private async Task LoadReportingManagerAsync()
-{
-    isLoadingManager = true;
-    managerError = null;
-
-    try
+    // Direct reports
+    private PagedListState<ManagerEmployeeResponse> employeeList = new()
     {
-        reportingManagers = await ManagerEmployeeApiService.GetMyReportingManagersAsync(
-            new PagedRequest { Page = 1, PageSize = 10 });
+        PageSize = PageSize,
+        IsLoading = true
+    };
 
-        if (reportingManagers is null)
+    // Selected employee
+    private ManagerEmployeeResponse? selectedEmployee;
+
+    // Reporting manager
+    private PagedResponse<ManagerEmployeeResponse>? reportingManagers;
+    private AsyncOperationState reportingManagerLoad = new()
+    {
+        IsLoading = true
+    };
+
+    // Request management
+    private bool disposed;
+    private long requestVersion;
+    private CancellationTokenSource? activeRequest;
+    private async Task LoadReportingManagerAsync()
+    {
+        reportingManagerLoad.IsLoading = true;
+        reportingManagerLoad.Error = null;
+
+        try
         {
-            managerError = "Your reporting manager information is unavailable.";
+            reportingManagers = await ManagerEmployeeApiService.GetMyReportingManagersAsync(
+                new PagedRequest { Page = 1, PageSize = 10 });
+
+            if (reportingManagers is null)
+            {
+                reportingManagerLoad.Error =
+                    "Your reporting manager information is unavailable.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            reportingManagerLoad.Error =
+                "The reporting relationship service could not be reached.";
+        }
+        catch (JsonException)
+        {
+            reportingManagerLoad.Error =
+                "The reporting relationship service returned an invalid response.";
+        }
+        finally
+        {
+            reportingManagerLoad.IsLoading = false;
         }
     }
-    catch (HttpRequestException)
-    {
-        managerError = "The reporting relationship service could not be reached.";
-    }
-    catch (JsonException)
-    {
-        managerError = "The reporting relationship service returned an invalid response.";
-    }
-    finally
-    {
-        isLoadingManager = false;
-    }
-}
 
-protected override async Task OnInitializedAsync()
-{
-    await Task.WhenAll(
-        LoadEmployeesAsync(1),
-        LoadReportingManagerAsync());
-}
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(
+            LoadEmployeesAsync(1),
+            LoadReportingManagerAsync());
+    }
     private async Task LoadEmployeesAsync(int page)
     {
         activeRequest?.Cancel();
         activeRequest?.Dispose();
+
         activeRequest = new CancellationTokenSource();
         var cancellationToken = activeRequest.Token;
+
         var version = ++requestVersion;
-        currentPage = page;
-        isLoading = true;
-        loadError = null;
+
+        employeeList.CurrentPage = page;
+        employeeList.IsLoading = true;
+        employeeList.Error = null;
 
         try
         {
-            employeesPage = await ManagerEmployeeApiService.GetManagedEmployeesAsync(
-                new PagedRequest { Page = page, PageSize = PageSize },
+            var response = await ManagerEmployeeApiService.GetManagedEmployeesAsync(
+                new PagedRequest
+                {
+                    Page = page,
+                    PageSize = employeeList.PageSize
+                },
                 cancellationToken);
 
             if (version != requestVersion || cancellationToken.IsCancellationRequested)
+                return;
+
+            if (response is null)
             {
+                employeeList.Data = null;
+                employeeList.Error =
+                    "Your direct reports could not be loaded. Check your access and retry.";
+
                 return;
             }
 
-            if (employeesPage is null)
-            {
-                loadError = "Your direct reports could not be loaded. Check your access and retry.";
-            }
+            employeeList.Data = response;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -318,23 +336,25 @@ protected override async Task OnInitializedAsync()
         {
             if (version == requestVersion)
             {
-                employeesPage = null;
-                loadError = "The Manager-Employee service could not be reached.";
+                employeeList.Data = null;
+                employeeList.Error =
+                    "The Manager-Employee service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (version == requestVersion)
             {
-                employeesPage = null;
-                loadError = "The Manager-Employee service returned an invalid response.";
+                employeeList.Data = null;
+                employeeList.Error =
+                    "The Manager-Employee service returned an invalid response.";
             }
         }
         finally
         {
             if (version == requestVersion && !disposed)
             {
-                isLoading = false;
+                employeeList.IsLoading = false;
             }
         }
     }

@@ -9,4 +9,13 @@ public class ConflictException : AppException
             "CONFLICT")
     {
     }
+
+    public ConflictException(string message, object details)
+        : base(
+            message,
+            StatusCodes.Status409Conflict,
+            "CONFLICT",
+            details)
+    {
+    }
 }

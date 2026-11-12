@@ -30,6 +30,7 @@ else
                 @key="column.Id"
                 Column="column"
                 CanManageBoard="CanManageBoard"
+                CanDeleteContent="CanDeleteContent"
                 OnEdit="OnEdit"
                 OnDelete="OnDelete" />
         }
@@ -45,6 +46,9 @@ else
 
     [Parameter]
     public bool CanManageBoard { get; set; }
+
+    [Parameter]
+    public bool CanDeleteContent { get; set; }
 
     [Parameter]
     public EventCallback OnCreate { get; set; }

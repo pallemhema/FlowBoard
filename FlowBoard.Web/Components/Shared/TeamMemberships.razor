@@ -68,13 +68,11 @@
             }
         </div>
 
-        @if (teamPage.TotalCount > teamPage.PageSize)
-        {
-            <Pagination CurrentPage="@teamPage.Page"
-                        TotalPages="@teamPage.TotalPages"
-                        TotalCount="@teamPage.TotalCount"
-                        PageChanged="LoadTeamsAsync" />
-        }
+        <Pagination CurrentPage="@teamPage.Page"
+                    TotalPages="@teamPage.TotalPages"
+                    TotalCount="@teamPage.TotalCount"
+                    PageSize="@teamPage.PageSize"
+                    PageChanged="LoadTeamsAsync" />
     }
 </section>
 
@@ -175,13 +173,11 @@
                             }
                         </div>
 
-                        @if (membersPage.TotalCount > membersPage.PageSize)
-                        {
-                            <Pagination CurrentPage="@membersPage.Page"
-                                        TotalPages="@membersPage.TotalPages"
-                                        TotalCount="@membersPage.TotalCount"
-                                        PageChanged="LoadMembersAsync" />
-                        }
+                        <Pagination CurrentPage="@membersPage.Page"
+                                    TotalPages="@membersPage.TotalPages"
+                                    TotalCount="@membersPage.TotalCount"
+                                    PageSize="@membersPage.PageSize"
+                                    PageChanged="LoadMembersAsync" />
                     }
                 </section>
             }

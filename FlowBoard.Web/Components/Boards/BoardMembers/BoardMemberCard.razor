@@ -14,8 +14,7 @@
 
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-secondary">@Member.Role</span>
-                @if (CanManageBoard && !confirmingDelete)
-                {
+@if ((CanManageBoard || CanDeleteContent) && !confirmingDelete)                {
                     <button class="btn btn-sm btn-light border-0"
                             type="button"
                             aria-label="Member actions"
@@ -33,20 +32,25 @@
             Joined @Member.JoinedAt.ToLocalTime().ToString("dd MMM yyyy")
         </p>
 
-        @if (CanManageBoard && actionsOpen && !confirmingDelete)
-        {
+        @if ((CanManageBoard || CanDeleteContent) && actionsOpen && !confirmingDelete)        {
             <div class="entity-action-menu">
-                <button type="button" class="dropdown-item" @onclick="EditRole">
-                    <i class="bi bi-person-gear me-2" aria-hidden="true"></i>Edit role
-                </button>
-                <button type="button" class="dropdown-item text-danger" @onclick="StartDelete">
-                    <i class="bi bi-person-dash me-2" aria-hidden="true"></i>Remove member
-                </button>
+                @if (CanManageBoard)
+                {
+                    <button type="button" class="dropdown-item" @onclick="EditRole">
+                        <i class="bi bi-person-gear me-2" aria-hidden="true"></i>Edit role
+                    </button>
+                }
+
+                @if (CanDeleteContent)
+                {
+                    <button type="button" class="dropdown-item text-danger" @onclick="StartDelete">
+                        <i class="bi bi-person-dash me-2" aria-hidden="true"></i>Remove member
+                    </button>
+                }
             </div>
         }
 
-        @if (CanManageBoard && confirmingDelete)
-        {
+        @if (CanDeleteContent && confirmingDelete)        {
             <div class="mt-3 pt-3 border-top" role="group" aria-label="Confirm member removal">
                 <p class="small mb-2">Remove this member?</p>
                 <div class="d-flex gap-2">
@@ -64,6 +68,9 @@
 
     [Parameter]
     public bool CanManageBoard { get; set; }
+
+    [Parameter]
+    public bool CanDeleteContent { get; set; }
 
     [Parameter]
     public EventCallback<BoardMemberResponse> OnEditRole { get; set; }

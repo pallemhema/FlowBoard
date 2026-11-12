@@ -2,16 +2,13 @@
   max-width: 1540px;
 }
 
-.employee-boards-search[b-89au35543x] {
-  max-width: 34rem;
-  margin-bottom: 1.25rem;
-}
+/* Loading and error states */
 
 .boards-loading[b-89au35543x] {
   display: flex;
+  min-height: 3rem;
   align-items: center;
   gap: 0.65rem;
-  min-height: 3rem;
   color: var(--flowboard-muted);
   font-size: 0.85rem;
 }
@@ -31,18 +28,15 @@
   line-height: 1.5;
 }
 
-.boards-results-heading[b-89au35543x] {
-  margin-bottom: 0.7rem;
-  color: var(--flowboard-ink);
-  font-size: 0.84rem;
-  font-weight: 650;
-}
+/* Board grid */
 
 .employee-board-grid[b-89au35543x] {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
+
+/* Board card */
 
 .employee-board-card[b-89au35543x] {
   display: flex;
@@ -106,6 +100,8 @@
   -webkit-line-clamp: 2;
 }
 
+/* Board details */
+
 .employee-board-details[b-89au35543x] {
   display: grid;
   gap: 0.65rem;
@@ -138,10 +134,14 @@
   white-space: nowrap;
 }
 
+/* Board action */
+
 .employee-board-open[b-89au35543x] {
   align-self: flex-start;
   margin-top: auto;
 }
+
+/* Responsive layout */
 
 @media (max-width: 1050px) {
   .employee-board-grid[b-89au35543x] {

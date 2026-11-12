@@ -1,6 +1,7 @@
 
 using FlowBoard.Shared.DTOs.Common;
 using FlowBoard.Shared.DTOs.Workspaces;
+using FlowBoard.Web.Services.Api;
 
 public interface IWorkspaceApiService
 {
@@ -35,7 +36,7 @@ public interface IWorkspaceApiService
         AddWorkspaceMemberRequest request,
         CancellationToken cancellationToken = default);
 
-    Task<bool> RemoveMemberAsync(
+    Task<WorkspaceMemberRemovalResult> RemoveMemberAsync(
         Guid workspaceId,
         Guid userId,
         CancellationToken cancellationToken = default);

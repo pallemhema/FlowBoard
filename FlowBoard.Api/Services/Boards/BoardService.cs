@@ -122,16 +122,13 @@ public class BoardService : IBoardService
 
         var userId = _currentUserService.UserId;
         var boardData = await ProjectResponseData(
-                query,
-                userId,
-                IsCurrentUserAdmin(),
-                IsCurrentUserManager())
-            .OrderBy(x => x.Name)
-            .Skip(
-                (request.Page - 1) *
-                request.PageSize)
-            .Take(request.PageSize)
-            .ToListAsync(cancellationToken);
+                        query
+                            .OrderBy(x => x.Name)
+                            .Skip((request.Page - 1) * request.PageSize)
+                            .Take(request.PageSize),
+                        _currentUserService.UserId,
+                        cancellationToken);
+
 
         // ============================================================
         // RESPONSE
@@ -139,9 +136,7 @@ public class BoardService : IBoardService
 
         return new PagedResponse<BoardResponse>
         {
-            Items = boardData
-                .Select(MapToResponse)
-                .ToList(),
+            Items = boardData,
 
             Page = request.Page,
 
@@ -151,6 +146,26 @@ public class BoardService : IBoardService
 
             TotalPages = totalPages
         };
+    }
+
+    public async Task<IReadOnlyList<BoardProjectOptionResponse>> GetWorkspaceProjectsAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken = default)
+    {
+        await _boardAuthorizationService.EnsureCanManageWorkspaceBoardsAsync(
+            workspaceId,
+            cancellationToken);
+
+        return await _dbContext.Projects
+            .AsNoTracking()
+            .Where(project => project.WorkspaceId == workspaceId)
+            .OrderBy(project => project.Name)
+            .Select(project => new BoardProjectOptionResponse
+            {
+                ProjectId = project.Id,
+                Name = project.Name
+            })
+            .ToListAsync(cancellationToken);
     }
 
     // ============================================================
@@ -245,7 +260,7 @@ public class BoardService : IBoardService
                 "Board was not found.");
         }
 
-        await _boardAuthorizationService.EnsureCanManageBoardAsync(
+        await _boardAuthorizationService.EnsureCanDeleteBoardAsync(
             boardId,
             cancellationToken);
 
@@ -289,9 +304,9 @@ public class BoardService : IBoardService
             throw new NotFoundException("Workspace was not found.");
         }
 
-        var userId = _currentUserService.UserId;
-        var isAdmin = IsCurrentUserAdmin();
-        var isWorkspaceOwner = workspace.OwnerId == userId;
+        await _boardAuthorizationService.EnsureCanManageWorkspaceBoardsAsync(
+            workspaceId,
+            cancellationToken);
 
         switch (purpose)
         {
@@ -319,19 +334,6 @@ public class BoardService : IBoardService
                         "The project must belong to the board's workspace.");
                 }
 
-                if (!isAdmin &&
-                    (!IsCurrentUserManager() ||
-                     project.ManagerId != userId ||
-                     (!isWorkspaceOwner &&
-                      !await _dbContext.WorkspaceMembers.AnyAsync(
-                          member => member.WorkspaceId == workspaceId &&
-                                    member.UserId == userId,
-                          cancellationToken))))
-                {
-                    throw new ForbiddenException(
-                        "Only an administrator or the responsible Project Manager with workspace access can create or assign a Project board.");
-                }
-
                 return;
 
             case SharedBoardPurpose.GeneralLearning:
@@ -341,12 +343,6 @@ public class BoardService : IBoardService
                         "A General/Learning board cannot be associated with a project.");
                 }
 
-                if (!isAdmin && !isWorkspaceOwner)
-                {
-                    throw new ForbiddenException(
-                        "Only an administrator or workspace owner can create a General/Learning board.");
-                }
-
                 return;
 
             default:
@@ -354,77 +350,132 @@ public class BoardService : IBoardService
         }
     }
 
-    private bool IsCurrentUserAdmin() =>
-        string.Equals(
-            _currentUserService.Role,
-            nameof(UserRole.Admin),
-            StringComparison.Ordinal);
-
-    private bool IsCurrentUserManager() =>
-        string.Equals(
-            _currentUserService.Role,
-            nameof(UserRole.Manager),
-            StringComparison.Ordinal);
-
     // ============================================================
     // MAPPING
     // ============================================================
 
-    private IQueryable<BoardResponseData> ProjectResponseData(
-        IQueryable<Board> query,
-        Guid currentUserId,
-        bool isAdmin,
-        bool isManager) =>
-        query.Select(board => new BoardResponseData
+    private async Task<List<BoardResponse>> ProjectResponseData(
+     IQueryable<Board> query,
+     Guid currentUserId,
+     CancellationToken cancellationToken)
+    {
+        // Execute the database query using Domain enums.
+        var boardData = await query.Select(board => new
         {
-            Id = board.Id,
-            Name = board.Name,
-            Description = board.Description,
-            WorkspaceId = board.WorkspaceId,
+            board.Id,
+            board.Name,
+            board.Description,
+            board.WorkspaceId,
             WorkspaceName = board.Workspace.Name,
-            ProjectId = board.ProjectId,
-            ProjectName = board.Project == null
-                ? null
-                : board.Project.Name,
+            board.ProjectId,
+            ProjectName = _dbContext.Projects
+                .Where(project => project.Id == board.ProjectId)
+                .Select(project => project.Name)
+                .FirstOrDefault(),
+
             Purpose = board.Purpose,
+
             CurrentUserRole = board.OwnerId == currentUserId
                 ? BoardMemberRole.Owner
                 : board.Members
                     .Where(member => member.UserId == currentUserId)
                     .Select(member => (BoardMemberRole?)member.Role)
                     .FirstOrDefault(),
-            OwnerId = board.OwnerId,
-            CanManageBoard = isAdmin ||
-                board.OwnerId == currentUserId ||
+
+            board.OwnerId,
+
+            CanManageBoard = _dbContext.Users.Any(user =>
+                user.Id == currentUserId &&
+                user.IsActive &&
+                (
+                    user.Role == UserRole.Admin ||
+
+                    (user.Role == UserRole.Employee &&
+                     board.OwnerId == currentUserId) ||
+
+                    board.Workspace.OwnerId == currentUserId ||
+
+                    (user.Role == UserRole.Manager &&
+                     board.Workspace.Members.Any(member =>
+                         member.UserId == currentUserId))
+                )),
+
+            OwnerName = _dbContext.Users
+                .Where(user => user.Id == board.OwnerId)
+                .Select(user => user.FirstName + " " + user.LastName)
+                .FirstOrDefault(),
+
+            OwnerEmail = _dbContext.Users
+                .Where(user => user.Id == board.OwnerId)
+                .Select(user => user.Email)
+                .FirstOrDefault(),
+
+            CanDeleteBoard =
                 board.Workspace.OwnerId == currentUserId ||
-                (isManager &&
-                 board.ProjectId.HasValue &&
-                 board.Project!.WorkspaceId == board.WorkspaceId &&
-                 board.Project.ManagerId == currentUserId &&
-                 (board.Workspace.OwnerId == currentUserId ||
-                  board.Workspace.Members.Any(member =>
-                      member.UserId == currentUserId))),
+                _dbContext.Users.Any(user =>
+                    user.Id == currentUserId &&
+                    user.IsActive &&
+                    user.Role == UserRole.Admin),
+
+            CanDeleteContent =
+                board.Workspace.OwnerId == currentUserId ||
+                _dbContext.Users.Any(user =>
+                    user.Id == currentUserId &&
+                    user.IsActive &&
+                    user.Role == UserRole.Admin),
+
+            board.CreatedAt,
+            board.ModifiedAt
+
+        }).ToListAsync(cancellationToken);
+
+        // Convert Domain enums to Shared enums after materialization.
+        return boardData.Select(board => new BoardResponse
+        {
+            Id = board.Id,
+            Name = board.Name,
+            Description = board.Description,
+            WorkspaceId = board.WorkspaceId,
+            WorkspaceName = board.WorkspaceName,
+            ProjectId = board.ProjectId,
+            ProjectName = board.ProjectName,
+
+            Purpose = Enum.Parse<SharedBoardPurpose>(
+                board.Purpose.ToString()),
+
+            CurrentUserRole = board.CurrentUserRole.HasValue
+                ? Enum.Parse<SharedBoardMemberRole>(
+                    board.CurrentUserRole.Value.ToString())
+                : null,
+
+            OwnerId = board.OwnerId,
+            OwnerName = board.OwnerName,
+            OwnerEmail = board.OwnerEmail,
+            CanManageBoard = board.CanManageBoard,
+            CanDeleteBoard = board.CanDeleteBoard,
+            CanDeleteContent = board.CanDeleteContent,
             CreatedAt = board.CreatedAt,
             ModifiedAt = board.ModifiedAt
-        });
 
+        }).ToList();
+    }
     private async Task<BoardResponse> GetBoardResponseAsync(
         Guid boardId,
         Guid currentUserId,
         CancellationToken cancellationToken)
     {
         var boardData = await ProjectResponseData(
-                _dbContext.Boards.AsNoTracking().Where(board => board.Id == boardId),
-                currentUserId,
-                IsCurrentUserAdmin(),
-                IsCurrentUserManager())
-            .SingleAsync(cancellationToken);
+            _dbContext.Boards
+                .AsNoTracking()
+                .Where(board => board.Id == boardId),
+            currentUserId,
+            cancellationToken);
 
-        return MapToResponse(boardData);
+        return boardData.Single();
     }
 
     private static BoardResponse MapToResponse(
-        BoardResponseData board)
+        BoardResponse board)
     {
         return new BoardResponse
         {
@@ -440,38 +491,15 @@ public class BoardService : IBoardService
                 ? (SharedBoardMemberRole?)board.CurrentUserRole.Value
                 : null,
             OwnerId = board.OwnerId,
+            OwnerName = board.OwnerName,
+            OwnerEmail = board.OwnerEmail,
             CanManageBoard = board.CanManageBoard,
+            CanDeleteBoard = board.CanDeleteBoard,
+            CanDeleteContent = board.CanDeleteContent,
             CreatedAt = board.CreatedAt,
             ModifiedAt = board.ModifiedAt
         };
     }
 
-    private sealed class BoardResponseData
-    {
-        public Guid Id { get; init; }
 
-        public string Name { get; init; } = string.Empty;
-
-        public string? Description { get; init; }
-
-        public Guid WorkspaceId { get; init; }
-
-        public string WorkspaceName { get; init; } = string.Empty;
-
-        public Guid? ProjectId { get; init; }
-
-        public string? ProjectName { get; init; }
-
-        public BoardPurpose Purpose { get; init; }
-
-        public BoardMemberRole? CurrentUserRole { get; init; }
-
-        public Guid OwnerId { get; init; }
-
-        public bool CanManageBoard { get; init; }
-
-        public DateTime CreatedAt { get; init; }
-
-        public DateTime? ModifiedAt { get; init; }
-    }
 }

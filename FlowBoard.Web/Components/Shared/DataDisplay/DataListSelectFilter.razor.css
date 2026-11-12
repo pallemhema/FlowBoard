@@ -1,0 +1,25 @@
+.data-list-filter {
+    min-width: 0;
+    width: 100%;
+}
+
+.data-list-filter .form-select {
+    width: 100%;
+    height: 42px;
+    border: 1px solid #dce1e8;
+    border-radius: 8px;
+    background-color: #fff;
+    color: #344054;
+    font-size: 0.8rem;
+    box-shadow: none;
+}
+
+.data-list-filter .form-select:focus {
+    border-color: #8098f9;
+    box-shadow: 0 0 0 3px rgba(128, 152, 249, 0.15);
+}
+
+.data-list-filter .form-select:disabled {
+    background-color: #f2f4f7;
+    color: #98a2b3;
+}

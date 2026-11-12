@@ -88,26 +88,26 @@
                 </dl>
             </div>
 
-            @if (board.CanManageBoard && !isConfirmingBoardDelete)
-            {
+                @if (board.CanDeleteBoard && isConfirmingBoardDelete)            {
                 <div class="d-flex flex-wrap gap-2 align-items-start">
-                    <button class="btn btn-outline-secondary"
-                            @onclick="EditBoard">
-                        <i class="bi bi-pencil me-2" aria-hidden="true"></i>Edit
-                    </button>
-                    <button class="btn btn-outline-danger"
-                            @onclick="RequestBoardDelete"
-                            disabled="@isDeletingBoard">
-                        <i class="bi bi-trash me-2" aria-hidden="true"></i>Delete
-                    </button>
-                </div>
-            }
 
-            @if (!board.CanManageBoard)
-            {
-                <div class="alert alert-info" role="status">
-                    You can view this board and its contents. Board management is restricted to authorized board managers.
-                    Approval requests are not currently available.
+                    @if (board.CanManageBoard)
+                    {
+                        <button class="btn btn-outline-secondary"
+                                @onclick="EditBoard">
+                            <i class="bi bi-pencil me-2" aria-hidden="true"></i>Edit
+                        </button>
+                    }
+
+                    @if (board.CanDeleteBoard)
+                    {
+                        <button class="btn btn-outline-danger"
+                                @onclick="RequestBoardDelete"
+                                disabled="@isDeletingBoard">
+                            <i class="bi bi-trash me-2" aria-hidden="true"></i>Delete
+                        </button>
+                    }
+
                 </div>
             }
 
@@ -217,20 +217,19 @@
                         <BoardColumnList
                             Columns="@PagedColumns"
                             CanManageBoard="@board.CanManageBoard"
+                            CanDeleteContent="@board.CanDeleteContent"
                             OnCreate="@OpenCreateColumn"
                             OnEdit="@EditColumn"
                             OnDelete="@DeleteColumn" />
                     </CascadingValue>
                 </CascadingValue>
 
-                @if (TotalColumnPages > 1)
-                {
-                    <Pagination
-                        CurrentPage="columnPage"
-                        TotalPages="TotalColumnPages"
-                        TotalCount="FilteredColumns.Count"
-                        PageChanged="ChangeColumnPageAsync" />
-                }
+                <Pagination
+                    CurrentPage="columnPage"
+                    TotalPages="TotalColumnPages"
+                    TotalCount="FilteredColumns.Count"
+                    PageSize="@PageSize"
+                    PageChanged="ChangeColumnPageAsync" />
             }
         }
 
@@ -288,23 +287,28 @@
                 <EmptyState
                     Title="@(string.IsNullOrWhiteSpace(memberSearch) ? "No members assigned" : "No members match your search")"
                     Message="@(string.IsNullOrWhiteSpace(memberSearch) ? "Add a member to collaborate on this board." : "Clear the search to see all members.")" />
+                <Pagination
+                    CurrentPage="memberPage"
+                    TotalPages="memberTotalPages"
+                    TotalCount="memberTotalCount"
+                    PageSize="@PageSize"
+                    PageChanged="ChangeMemberPageAsync" />
             }
             else
             {
                 <BoardMemberList
                     Members="@members"
                     CanManageBoard="@board.CanManageBoard"
+                    CanDeleteContent="@board.CanDeleteContent"
                     OnEditRole="@EditMemberRole"
                     OnRemove="@RemoveMember" />
 
-                @if (memberTotalPages > 1)
-                {
-                    <Pagination
-                        CurrentPage="memberPage"
-                        TotalPages="memberTotalPages"
-                        TotalCount="memberTotalCount"
-                        PageChanged="ChangeMemberPageAsync" />
-                }
+                <Pagination
+                    CurrentPage="memberPage"
+                    TotalPages="memberTotalPages"
+                    TotalCount="memberTotalCount"
+                    PageSize="@PageSize"
+                    PageChanged="ChangeMemberPageAsync" />
             }
         }
     }
@@ -602,9 +606,13 @@
             memberTotalPages = result.TotalPages;
             memberTotalCount = result.TotalCount;
 
-            if (memberTotalPages > 0 && memberPage > memberTotalPages)
+            if (memberPage > memberTotalPages)
             {
-                memberPage = memberTotalPages;
+                memberPage = Math.Max(1, memberTotalPages);
+                if (memberTotalPages > 0)
+                {
+                    await LoadMembersAsync();
+                }
             }
         }
         catch
@@ -777,9 +785,11 @@
             return;
         }
 
-        members.Remove(member);
+        if (members.Count == 1 && memberPage > 1)
+        {
+            memberPage--;
+        }
 
-        // Reload the current page so pagination remains accurate.
         await LoadMembersAsync();
     }
 }

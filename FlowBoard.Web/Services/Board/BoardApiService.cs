@@ -48,6 +48,19 @@ public class BoardApiService : IBoardApiService
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<BoardProjectOptionResponse>?> GetWorkspaceProjectsAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken = default)
+    {
+        var response = await _apiClient.GetAsync(
+            $"api/boards/workspaces/{workspaceId}/projects",
+            cancellationToken);
+        return await ReadAsync<List<BoardProjectOptionResponse>>(
+            response,
+            "Unable to load projects for this workspace.",
+            cancellationToken);
+    }
+
     public async Task<BoardResponse?> GetByIdAsync(
         Guid boardId,
         CancellationToken cancellationToken = default)

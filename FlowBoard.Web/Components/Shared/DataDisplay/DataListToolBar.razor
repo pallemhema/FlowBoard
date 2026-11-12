@@ -1,0 +1,50 @@
+<div class="data-list-toolbar">
+
+    <div class="data-list-toolbar-search">
+        <SearchBox Value="@SearchValue"
+                   ValueChanged="@SearchValueChanged"
+                   Placeholder="@SearchPlaceholder" />
+    </div>
+
+    @if (Filters is not null)
+    {
+        <div class="data-list-toolbar-filters">
+            @Filters
+        </div>
+    }
+
+    @if (Messages is not null)
+    {
+        <div class="data-list-toolbar-messages">
+            @Messages
+        </div>
+    }
+
+    @if (Actions is not null)
+    {
+        <div class="data-list-toolbar-actions">
+            @Actions
+        </div>
+    }
+
+</div>
+
+@code {
+    [Parameter]
+    public string? SearchValue { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> SearchValueChanged { get; set; }
+
+    [Parameter]
+    public string SearchPlaceholder { get; set; } = "Search...";
+
+    [Parameter]
+    public RenderFragment? Filters { get; set; }
+
+    [Parameter]
+    public RenderFragment? Messages { get; set; }
+
+    [Parameter]
+    public RenderFragment? Actions { get; set; }
+}

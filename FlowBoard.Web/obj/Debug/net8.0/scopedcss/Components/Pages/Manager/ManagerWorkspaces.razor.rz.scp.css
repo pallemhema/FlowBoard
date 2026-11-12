@@ -17,6 +17,8 @@
   gap: 0.55rem;
 }
 
+/* Loading and error states */
+
 .manager-workspace-loading[b-rx1ab8asif],
 .manager-workspace-resource-state[b-rx1ab8asif],
 .manager-workspace-inline-state[b-rx1ab8asif] {
@@ -46,19 +48,17 @@
   line-height: 1.45;
 }
 
-.manager-workspace-summary[b-rx1ab8asif],
-.manager-workspace-resource-panel[b-rx1ab8asif] {
+/* Workspace summary */
+
+.manager-workspace-summary[b-rx1ab8asif] {
+  display: grid;
   min-width: 0;
+  gap: 1rem;
   padding: clamp(1rem, 2.5vw, 1.5rem);
   border: 1px solid var(--flowboard-line);
   border-radius: 0.9rem;
   background: #fff;
   box-shadow: 0 1px 2px rgba(32, 36, 58, 0.035);
-}
-
-.manager-workspace-summary[b-rx1ab8asif] {
-  display: grid;
-  gap: 1rem;
 }
 
 .manager-workspace-label[b-rx1ab8asif] {
@@ -91,21 +91,7 @@
   gap: 0.45rem;
 }
 
-.manager-workspace-section-heading[b-rx1ab8asif] {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-}
-
-.manager-workspace-section-heading h2[b-rx1ab8asif] {
-  margin: 0;
-  color: var(--flowboard-ink);
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-}
+/* Add workspace members */
 
 .manager-workspace-member-add[b-rx1ab8asif] {
   display: grid;
@@ -130,6 +116,8 @@
   font-size: 0.72rem;
   line-height: 1.45;
 }
+
+/* Workspace members */
 
 .manager-workspace-people-list[b-rx1ab8asif] {
   display: grid;
@@ -184,16 +172,7 @@
   font-weight: 700;
 }
 
-.manager-workspace-count[b-rx1ab8asif] {
-  flex: 0 0 auto;
-  padding: 0.3rem 0.6rem;
-  border: 1px solid #e8e9f1;
-  border-radius: 999px;
-  color: #5e657e;
-  background: #fafbfe;
-  font-size: 0.72rem;
-  font-weight: 650;
-}
+/* Projects and boards */
 
 .manager-workspace-project-grid[b-rx1ab8asif],
 .manager-workspace-board-grid[b-rx1ab8asif] {
@@ -231,6 +210,8 @@
   outline-offset: 2px;
 }
 
+/* Resource icons */
+
 .manager-workspace-resource-icon[b-rx1ab8asif] {
   display: grid;
   width: 2.25rem;
@@ -246,6 +227,8 @@
   color: #3765b0;
   background: #edf3ff;
 }
+
+/* Resource content */
 
 .manager-workspace-resource-copy[b-rx1ab8asif] {
   display: grid;
@@ -299,6 +282,8 @@
   overflow-wrap: anywhere;
 }
 
+/* Project and board metadata */
+
 .manager-workspace-project-dates[b-rx1ab8asif],
 .manager-workspace-board-meta[b-rx1ab8asif],
 .manager-workspace-board-description[b-rx1ab8asif],
@@ -319,6 +304,8 @@
 .manager-workspace-board-project[b-rx1ab8asif] {
   color: #536079;
 }
+
+/* Responsive layout */
 
 @media (max-width: 767.98px) {
   .manager-workspace-project-grid[b-rx1ab8asif],

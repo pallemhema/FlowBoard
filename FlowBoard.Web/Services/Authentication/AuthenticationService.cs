@@ -150,10 +150,11 @@ public class AuthenticationService :
                 request,
                 cancellationToken);
 
-        if (response is null)
+        if (response?.Authentication is null)
         {
             _toastService.Error(
-                "Invalid email or password.");
+                response?.ErrorMessage ??
+                    AuthErrorMessages.InvalidCredentials);
 
             Console.WriteLine(
             "AUTH SERVICE: Login failed.");
@@ -169,7 +170,7 @@ public class AuthenticationService :
         // Login already established authentication.
         // Do NOT call RefreshAsync here.
 
-        SetAuthentication(response);
+        SetAuthentication(response.Authentication);
 
         _initialized = true;
 

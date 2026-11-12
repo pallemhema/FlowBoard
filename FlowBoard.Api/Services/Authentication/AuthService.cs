@@ -494,7 +494,7 @@ public class AuthService : IAuthService
         if (user is null)
         {
             throw new UnauthorizedException(
-                "Invalid email or password.");
+                AuthErrorMessages.InvalidCredentials);
         }
 
         var passwordValid = _passwordHasher.Verify(
@@ -504,13 +504,13 @@ public class AuthService : IAuthService
         if (!passwordValid)
         {
             throw new UnauthorizedException(
-                "Invalid email or password.");
+                AuthErrorMessages.InvalidCredentials);
         }
 
         if (!user.IsActive)
         {
             throw new UnauthorizedException(
-                "Invalid email or password.");
+                AuthErrorMessages.AccountDeactivated);
         }
 
         return await CreateAuthenticationResultAsync(
@@ -717,6 +717,36 @@ public class AuthService : IAuthService
                                     relationship.EmployeeId == user.Id));
         }
 
+        return await GetPagedUsersAsync(
+            usersQuery,
+            request,
+            isAdmin,
+            cancellationToken);
+    }
+
+    public Task<PagedResponse<UserDirectoryResponse>> GetEmployeesAsync(
+        PagedSearchRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureAdmin();
+
+        var employeesQuery = _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Role == UserRole.Employee);
+
+        return GetPagedUsersAsync(
+            employeesQuery,
+            request,
+            isAdmin: true,
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<PagedResponse<UserDirectoryResponse>> GetPagedUsersAsync(
+        IQueryable<User> usersQuery,
+        PagedSearchRequest request,
+        bool isAdmin,
+        CancellationToken cancellationToken)
+    {
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var search = request.Search.Trim().ToLower();

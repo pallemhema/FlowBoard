@@ -1,5 +1,7 @@
 @page "/employee/projects"
+
 @attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
+
 @implements IDisposable
 
 @using System.Net.Http
@@ -17,108 +19,141 @@
                 Eyebrow="Your work"
                 Description="Projects you can access, with links to their available boards." />
 
-    <div class="employee-projects-search">
-        <SearchBox @bind-Value="search"
-                   @bind-Value:after="SearchChangedAsync"
-                   Placeholder="Search projects..." />
-    </div>
+        <DataListPanel Title="My projects"
+                    TitleId="employee-projects-title"
+                    Description="Browse projects you can access and explore their available boards."
+                    CountText="@(projectPage is not null && projectsLoad.Error is null
+                        ? $"{projectPage.TotalCount} {(projectPage.TotalCount == 1 ? "project" : "projects")}"
+                        : null)"
+                    CssClass="employee-projects-panel">
 
-    @if (isLoadingProjects)
-    {
-        <div class="projects-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-            <span>Loading your projects...</span>
-        </div>
-    }
-    else if (!string.IsNullOrWhiteSpace(projectsError))
-    {
-        <div class="projects-error" role="alert">
-            <span>@projectsError</span>
-            <button type="button"
-                    class="btn btn-sm btn-outline-danger"
-                    @onclick="() => LoadProjectsAsync(page)">
-                Try again
-            </button>
-        </div>
-    }
-    else if (projectPage is { Items.Count: 0 })
-    {
-        <EmptyState Title="@(string.IsNullOrWhiteSpace(search) ? "No projects available" : "No projects match your search")"
-                    Message="@(string.IsNullOrWhiteSpace(search) ? "Projects you can access will appear here." : "Try changing your search.")" />
-    }
-    else if (projectPage is not null)
-    {
-        <div class="projects-results-heading">
-            <p class="mb-0">@projectPage.TotalCount @(projectPage.TotalCount == 1 ? "project" : "projects")</p>
-        </div>
+            <Toolbar>
+                <DataListToolBar SearchValue="@search"
+                                SearchValueChanged="HandleProjectSearchChanged"
+                                SearchPlaceholder="Search projects..." />
+            </Toolbar>
 
-        <section class="employee-project-grid" aria-label="Projects you can access">
-            @foreach (var project in projectPage.Items)
+        <ChildContent>
+            @if (projectsLoad.IsLoading)
             {
-                <article class="employee-project-card" @key="project.ProjectId">
-                    <div class="employee-project-card-header">
-                        <div class="employee-project-icon" aria-hidden="true">
-                            <i class="bi bi-kanban"></i>
-                        </div>
-                        <span class="employee-project-status employee-project-status-@GetStatusClass(project.Status)">
-                            @GetStatusLabel(project.Status)
-                        </span>
-                    </div>
-
-                    <h2>@project.Name</h2>
-                    <p class="employee-project-description">
-                        @(string.IsNullOrWhiteSpace(project.Description)
-                            ? "No description provided."
-                            : project.Description)
-                    </p>
-
-                    <div class="employee-project-workspace">
-                        <i class="bi bi-grid" aria-hidden="true"></i>
-                        <span>@project.WorkspaceName</span>
-                    </div>
+                <div class="projects-loading" role="status" aria-live="polite">
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
+                    <span>Loading your projects...</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(projectsLoad.Error))
+            {
+                <div class="projects-error" role="alert">
+                    <span>@projectsLoad.Error</span>
 
                     <button type="button"
-                            class="btn btn-outline-primary employee-project-open"
-                            aria-expanded="@(selectedProjectId == project.ProjectId)"
-                            @onclick="() => OpenProjectDetailsAsync(project)">
-                        @(selectedProjectId == project.ProjectId ? "Close details" : "View details and boards")
-                        <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+                            class="btn btn-sm btn-outline-danger"
+                            @onclick="() => LoadProjectsAsync(page)">
+                        Try again
                     </button>
-                </article>
+                </div>
             }
-        </section>
+            else if (projectPage is { Items.Count: 0 })
+            {
+                <EmptyState Title="@(string.IsNullOrWhiteSpace(search)
+                    ? "No projects available"
+                    : "No projects match your search")"
+                            Message="@(string.IsNullOrWhiteSpace(search)
+                    ? "Projects you can access will appear here."
+                    : "Try changing your search.")" />
+            }
+            else if (projectPage is not null)
+            {
+                <section class="employee-project-grid"
+                         aria-label="Projects you can access">
 
-        <Pagination CurrentPage="page"
-                    TotalPages="projectPage.TotalPages"
-                    TotalCount="projectPage.TotalCount"
-                    PageChanged="LoadProjectsAsync" />
-    }
+                    @foreach (var project in projectPage.Items)
+                    {
+                        <article class="employee-project-card"
+                                 @key="project.ProjectId">
+
+                            <div class="employee-project-card-header">
+                                <div class="employee-project-icon"
+                                     aria-hidden="true">
+                                    <i class="bi bi-kanban"></i>
+                                </div>
+
+                                <span class="employee-project-status employee-project-status-@GetStatusClass(project.Status)">
+                                    @GetStatusLabel(project.Status)
+                                </span>
+                            </div>
+
+                            <h2>@project.Name</h2>
+
+                            <p class="employee-project-description">
+                                @(string.IsNullOrWhiteSpace(project.Description)
+                                    ? "No description provided."
+                                    : project.Description)
+                            </p>
+
+                            <div class="employee-project-workspace">
+                                <i class="bi bi-grid" aria-hidden="true"></i>
+                                <span>@project.WorkspaceName</span>
+                            </div>
+
+                            <button type="button"
+                                    class="btn btn-outline-primary employee-project-open"
+                                    aria-expanded="@(selectedProjectId == project.ProjectId)"
+                                    @onclick="() => OpenProjectDetailsAsync(project)">
+                                @(selectedProjectId == project.ProjectId
+                                    ? "Close details"
+                                    : "View details and boards")
+
+                                <i class="bi bi-arrow-right ms-1"
+                                   aria-hidden="true"></i>
+                            </button>
+                        </article>
+                    }
+                </section>
+
+                <Pagination CurrentPage="page"
+                            TotalPages="projectPage.TotalPages"
+                            TotalCount="projectPage.TotalCount"
+                            PageSize="@projectPage.PageSize"
+                            PageChanged="LoadProjectsAsync" />
+            }
+        </ChildContent>
+    </DataListPanel>
 
     @if (selectedProject is not null)
     {
-        <section class="employee-project-details" aria-labelledby="employee-project-details-title">
+        <section class="employee-project-details"
+                 aria-labelledby="employee-project-details-title">
+
             <div class="employee-project-details-header">
                 <div>
                     <p class="section-label mb-1">Project details</p>
-                    <h2 id="employee-project-details-title">@selectedProject.Name</h2>
+                    <h2 id="employee-project-details-title">
+                        @selectedProject.Name
+                    </h2>
                 </div>
+
                 <button type="button"
                         class="btn-close"
                         aria-label="Close project details"
-                        @onclick="CloseProjectDetails"></button>
+                        @onclick="CloseProjectDetails">
+                </button>
             </div>
 
-            @if (isLoadingProjectDetails)
+            @if (projectDetailsLoad.IsLoading)
             {
                 <div class="projects-loading" role="status">
-                    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
                     <span>Loading project details...</span>
                 </div>
             }
-            else if (!string.IsNullOrWhiteSpace(projectDetailsError))
+            else if (!string.IsNullOrWhiteSpace(projectDetailsLoad.Error))
             {
                 <div class="projects-error" role="alert">
-                    <span>@projectDetailsError</span>
+                    <span>@projectDetailsLoad.Error</span>
+
                     <button type="button"
                             class="btn btn-sm btn-outline-danger"
                             @onclick="() => OpenProjectDetailsAsync(selectedProject, forceRefresh: true)">
@@ -139,38 +174,54 @@
                         <dt>Workspace</dt>
                         <dd>@selectedProject.WorkspaceName</dd>
                     </div>
+
                     <div>
                         <dt>Status</dt>
                         <dd>@GetStatusLabel(selectedProject.Status)</dd>
                     </div>
+
                     <div>
                         <dt>Schedule</dt>
-                        <dd>@selectedProject.StartDate.ToLocalTime().ToString("MMM d, yyyy") – @selectedProject.EndDate.ToLocalTime().ToString("MMM d, yyyy")</dd>
+                        <dd>
+                            @selectedProject.StartDate.ToString("MMM d, yyyy")
+                            –
+                            @selectedProject.EndDate.ToString("MMM d, yyyy")
+                        </dd>
                     </div>
                 </dl>
 
-                <section class="employee-project-boards" aria-labelledby="employee-project-boards-title">
+                <section class="employee-project-boards"
+                         aria-labelledby="employee-project-boards-title">
+
                     <div class="employee-project-boards-heading">
                         <div>
-                            <h3 id="employee-project-boards-title">Accessible project boards</h3>
+                            <h3 id="employee-project-boards-title">
+                                Accessible project boards
+                            </h3>
+
                             @if (projectBoards is not null)
                             {
-                                <span>@projectBoards.Count @(projectBoards.Count == 1 ? "board" : "boards")</span>
+                                <span>
+                                    @projectBoards.Count
+                                    @(projectBoards.Count == 1 ? "board" : "boards")
+                                </span>
                             }
                         </div>
                     </div>
 
-                    @if (isLoadingProjectBoards)
+                    @if (projectBoardsLoad.IsLoading)
                     {
                         <div class="projects-loading" role="status">
-                            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+                            <span class="spinner-border spinner-border-sm text-primary"
+                                  aria-hidden="true"></span>
                             <span>Loading accessible boards...</span>
                         </div>
                     }
-                    else if (!string.IsNullOrWhiteSpace(projectBoardsError))
+                    else if (!string.IsNullOrWhiteSpace(projectBoardsLoad.Error))
                     {
                         <div class="projects-error" role="alert">
-                            <span>@projectBoardsError</span>
+                            <span>@projectBoardsLoad.Error</span>
+
                             <button type="button"
                                     class="btn btn-sm btn-outline-danger"
                                     @onclick="RetryProjectBoardsAsync">
@@ -188,16 +239,26 @@
                         <div class="employee-project-board-list">
                             @foreach (var board in projectBoards)
                             {
-                                <article class="employee-project-board-row" @key="board.Id">
+                                <article class="employee-project-board-row"
+                                         @key="board.Id">
+
                                     <div class="employee-project-board-copy">
                                         <strong>@board.Name</strong>
-                                        <span>@(board.Purpose == BoardPurpose.GeneralLearning ? "General / Learning" : "Project")</span>
+
+                                        <span>
+                                            @(board.Purpose == BoardPurpose.GeneralLearning
+                                                ? "General / Learning"
+                                                : "Project")
+                                        </span>
                                     </div>
+
                                     <a class="btn btn-sm btn-outline-primary"
                                        href="@($"/workspaces/{board.WorkspaceId}/boards/{board.Id}")"
                                        aria-label="@($"Open board {board.Name}")">
                                         Open board
-                                        <i class="bi bi-arrow-up-right ms-1" aria-hidden="true"></i>
+
+                                        <i class="bi bi-arrow-up-right ms-1"
+                                           aria-hidden="true"></i>
                                     </a>
                                 </article>
                             }
@@ -210,8 +271,8 @@
 </div>
 
 @code {
-    private const int ProjectPageSize = 12;
-    private const int BoardPageSize = 100;
+    private const int ProjectPageSize = PageSizeDefaults.Default;
+    private const int BoardPageSize = PageSizeDefaults.Resource;
 
     [Parameter]
     [SupplyParameterFromQuery(Name = "workspaceId")]
@@ -221,23 +282,27 @@
     [SupplyParameterFromQuery(Name = "projectId")]
     public Guid? ProjectId { get; set; }
 
+    private readonly AsyncOperationState projectsLoad = new();
+    private readonly AsyncOperationState projectDetailsLoad = new();
+    private readonly AsyncOperationState projectBoardsLoad = new();
+
+    private readonly DebouncedAction searchDebounce = new();
+
     private PagedResponse<ProjectResponse>? projectPage;
     private ProjectResponse? selectedProject;
     private List<BoardResponse>? projectBoards;
+
     private string? search;
-    private string? projectsError;
-    private string? projectDetailsError;
-    private string? projectBoardsError;
-    private bool isLoadingProjects;
-    private bool isLoadingProjectDetails;
-    private bool isLoadingProjectBoards;
+
     private int page = 1;
     private Guid? selectedProjectId;
+
     private long projectsRequestVersion;
     private long detailsRequestVersion;
+
     private CancellationTokenSource? activeProjectsCts;
     private CancellationTokenSource? activeDetailsCts;
-    private CancellationTokenSource? searchDebounceCts;
+
     private bool hasLoadedProjectFilters;
     private Guid? lastWorkspaceFilter;
     private Guid? lastProjectFilter;
@@ -251,10 +316,12 @@
             hasLoadedProjectFilters = true;
             lastWorkspaceFilter = WorkspaceId;
             lastProjectFilter = ProjectId;
+
             await LoadProjectsAsync(1);
 
             var requestedProject = projectPage?.Items
                 .FirstOrDefault(project => project.ProjectId == ProjectId);
+
             if (requestedProject is not null)
             {
                 await OpenProjectDetailsAsync(requestedProject);
@@ -262,32 +329,28 @@
         }
     }
 
-    private async Task SearchChangedAsync()
-    {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
-        var debounceCts = searchDebounceCts = new CancellationTokenSource();
 
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), debounceCts.Token);
-            await LoadProjectsAsync(1);
-        }
-        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
-        {
-        }
+    private Task HandleProjectSearchChanged(string? value)
+    {
+        search = value?.Trim();
+
+        return searchDebounce.ExecuteAsync(
+            () => LoadProjectsAsync(1));
     }
 
     private async Task LoadProjectsAsync(int requestedPage)
     {
         page = requestedPage;
-        projectsError = null;
+
+        projectsLoad.Error = null;
+
         activeProjectsCts?.Cancel();
         activeProjectsCts?.Dispose();
-        activeProjectsCts = null;
+
         var requestVersion = ++projectsRequestVersion;
         var loadCts = activeProjectsCts = new CancellationTokenSource();
-        isLoadingProjects = true;
+
+        projectsLoad.IsLoading = true;
 
         try
         {
@@ -309,13 +372,17 @@
             if (result is null)
             {
                 projectPage = null;
-                projectsError = "Unable to load your projects. Please try again.";
+                projectsLoad.Error =
+                    "Unable to load your projects. Please try again.";
+
                 return;
             }
 
             projectPage = result;
+
             if (selectedProjectId.HasValue &&
-                !result.Items.Any(project => project.ProjectId == selectedProjectId.Value))
+                !result.Items.Any(project =>
+                    project.ProjectId == selectedProjectId.Value))
             {
                 CloseProjectDetails();
             }
@@ -328,7 +395,8 @@
             if (requestVersion == projectsRequestVersion)
             {
                 projectPage = null;
-                projectsError = "The project service could not be reached.";
+                projectsLoad.Error =
+                    "The project service could not be reached.";
             }
         }
         catch (JsonException)
@@ -336,14 +404,15 @@
             if (requestVersion == projectsRequestVersion)
             {
                 projectPage = null;
-                projectsError = "The project service returned an invalid response.";
+                projectsLoad.Error =
+                    "The project service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == projectsRequestVersion)
             {
-                isLoadingProjects = false;
+                projectsLoad.IsLoading = false;
             }
         }
     }
@@ -362,21 +431,27 @@
 
         activeDetailsCts?.Cancel();
         activeDetailsCts?.Dispose();
+
         var loadCts = activeDetailsCts = new CancellationTokenSource();
         var requestVersion = ++detailsRequestVersion;
+
         selectedProjectId = project.ProjectId;
         selectedProject = project;
+
         projectBoards = null;
-        projectDetailsError = null;
-        projectBoardsError = null;
-        isLoadingProjectDetails = true;
-        isLoadingProjectBoards = false;
+
+        projectDetailsLoad.Error = null;
+        projectBoardsLoad.Error = null;
+
+        projectDetailsLoad.IsLoading = true;
+        projectBoardsLoad.IsLoading = false;
 
         try
         {
             var fullProject = await ProjectApiService.GetByIdAsync(
                 project.ProjectId,
                 loadCts.Token);
+
             if (requestVersion != detailsRequestVersion)
             {
                 return;
@@ -384,12 +459,18 @@
 
             if (fullProject is null)
             {
-                projectDetailsError = "Project details could not be loaded. Confirm your access and retry.";
+                projectDetailsLoad.Error =
+                    "Project details could not be loaded. Confirm your access and retry.";
+
                 return;
             }
 
             selectedProject = fullProject;
-            await LoadProjectBoardsAsync(requestVersion, fullProject, loadCts.Token);
+
+            await LoadProjectBoardsAsync(
+                requestVersion,
+                fullProject,
+                loadCts.Token);
         }
         catch (OperationCanceledException) when (loadCts.IsCancellationRequested)
         {
@@ -398,21 +479,23 @@
         {
             if (requestVersion == detailsRequestVersion)
             {
-                projectDetailsError = "The project service could not be reached.";
+                projectDetailsLoad.Error =
+                    "The project service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (requestVersion == detailsRequestVersion)
             {
-                projectDetailsError = "The project service returned an invalid response.";
+                projectDetailsLoad.Error =
+                    "The project service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == detailsRequestVersion)
             {
-                isLoadingProjectDetails = false;
+                projectDetailsLoad.IsLoading = false;
             }
         }
     }
@@ -422,8 +505,8 @@
         ProjectResponse project,
         CancellationToken cancellationToken)
     {
-        isLoadingProjectBoards = true;
-        projectBoardsError = null;
+        projectBoardsLoad.IsLoading = true;
+        projectBoardsLoad.Error = null;
 
         try
         {
@@ -444,12 +527,17 @@
             if (firstPage is null)
             {
                 projectBoards = null;
-                projectBoardsError = "Accessible project boards could not be loaded.";
+                projectBoardsLoad.Error =
+                    "Accessible project boards could not be loaded.";
+
                 return;
             }
 
             var accessibleBoards = firstPage.Items.ToList();
-            for (var requestedPage = 2; requestedPage <= firstPage.TotalPages; requestedPage++)
+
+            for (var requestedPage = 2;
+                 requestedPage <= firstPage.TotalPages;
+                 requestedPage++)
             {
                 var nextPage = await BoardApiService.GetAsync(
                     new BoardQueryRequest
@@ -468,7 +556,9 @@
                 if (nextPage is null)
                 {
                     projectBoards = null;
-                    projectBoardsError = "Accessible boards could not be fully loaded. Partial results are withheld.";
+                    projectBoardsLoad.Error =
+                        "Accessible boards could not be fully loaded. Partial results are withheld.";
+
                     return;
                 }
 
@@ -490,7 +580,8 @@
             if (requestVersion == detailsRequestVersion)
             {
                 projectBoards = null;
-                projectBoardsError = "The board service could not be reached.";
+                projectBoardsLoad.Error =
+                    "The board service could not be reached.";
             }
         }
         catch (JsonException)
@@ -498,39 +589,46 @@
             if (requestVersion == detailsRequestVersion)
             {
                 projectBoards = null;
-                projectBoardsError = "The board service returned an invalid response.";
+                projectBoardsLoad.Error =
+                    "The board service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == detailsRequestVersion)
             {
-                isLoadingProjectBoards = false;
+                projectBoardsLoad.IsLoading = false;
             }
         }
     }
 
-    private Task RetryProjectBoardsAsync() =>
-        selectedProject is null || activeDetailsCts is null
+    private Task RetryProjectBoardsAsync()
+    {
+        return selectedProject is null || activeDetailsCts is null
             ? Task.CompletedTask
             : LoadProjectBoardsAsync(
                 detailsRequestVersion,
                 selectedProject,
                 activeDetailsCts.Token);
+    }
 
     private void CloseProjectDetails()
     {
         detailsRequestVersion++;
+
         activeDetailsCts?.Cancel();
         activeDetailsCts?.Dispose();
         activeDetailsCts = null;
+
         selectedProjectId = null;
         selectedProject = null;
         projectBoards = null;
-        projectDetailsError = null;
-        projectBoardsError = null;
-        isLoadingProjectDetails = false;
-        isLoadingProjectBoards = false;
+
+        projectDetailsLoad.Error = null;
+        projectBoardsLoad.Error = null;
+
+        projectDetailsLoad.IsLoading = false;
+        projectBoardsLoad.IsLoading = false;
     }
 
     private static string GetStatusLabel(ProjectStatus status) =>
@@ -553,10 +651,12 @@
 
     public void Dispose()
     {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
+        searchDebounce.Cancel();
+        searchDebounce.Dispose();
+
         activeProjectsCts?.Cancel();
         activeProjectsCts?.Dispose();
+
         activeDetailsCts?.Cancel();
         activeDetailsCts?.Dispose();
     }

@@ -23,26 +23,68 @@ public class BoardAuthorizationService : IBoardAuthorizationService
     public IQueryable<Board> GetAccessibleBoardsQuery()
     {
         var userId = _currentUserService.UserId;
-        if (IsCurrentUserAdmin())
-        {
-            return _dbContext.Boards.AsNoTracking();
-        }
 
-        var isManager = IsCurrentUserManager();
         return _dbContext.Boards
             .AsNoTracking()
-            .Where(board =>
-                board.OwnerId == userId ||
-                board.Workspace.OwnerId == userId ||
-                board.Members.Any(member => member.UserId == userId) ||
-                (isManager &&
-                 board.ProjectId.HasValue &&
-                 board.Project != null &&
-                 board.Project.WorkspaceId == board.WorkspaceId &&
-                 board.Project.ManagerId == userId &&
-                 (board.Workspace.OwnerId == userId ||
-                  board.Workspace.Members.Any(
-                      member => member.UserId == userId))));
+            .Where(board => _dbContext.Users.Any(user =>
+                user.Id == userId &&
+                user.IsActive &&
+                (user.Role == UserRole.Admin ||
+
+                 // Employees retain their existing creator access.
+                 (user.Role == UserRole.Employee &&
+                  board.OwnerId == userId) ||
+
+                 // Workspace owners can access all boards in their workspace.
+                 board.Workspace.OwnerId == userId ||
+
+                 // Explicit board membership.
+                 board.Members.Any(member =>
+                     member.UserId == userId) ||
+
+                 // Managers need Workspace access.
+                 (user.Role == UserRole.Manager &&
+                  board.Workspace.Members.Any(member =>
+                      member.UserId == userId)))));
+    }
+    public async Task EnsureCanManageWorkspaceBoardsAsync(
+        Guid workspaceId,
+        CancellationToken cancellationToken = default)
+    {
+        var workspace = await _dbContext.Workspaces
+            .AsNoTracking()
+            .Where(item => item.Id == workspaceId)
+            .Select(item => new { item.Id, item.OwnerId })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (workspace is null)
+        {
+            throw new NotFoundException("Workspace was not found.");
+        }
+
+        var userId = _currentUserService.UserId;
+        var userRole = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId && user.IsActive)
+            .Select(user => (UserRole?)user.Role)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (userRole == UserRole.Admin)
+        {
+            return;
+        }
+
+        var hasWorkspaceAccess = workspace.OwnerId == userId ||
+            await _dbContext.WorkspaceMembers.AnyAsync(
+                member => member.WorkspaceId == workspaceId &&
+                          member.UserId == userId,
+                cancellationToken);
+
+        if (userRole != UserRole.Manager || !hasWorkspaceAccess)
+        {
+            throw new ForbiddenException(
+                "Only an active administrator or Manager with workspace access can manage its boards.");
+        }
     }
 
     public async Task<BoardAccessContext> GetAccessAsync(
@@ -61,13 +103,27 @@ public class BoardAuthorizationService : IBoardAuthorizationService
         }
 
         var userId = _currentUserService.UserId;
-        var isAdmin = IsCurrentUserAdmin();
-        var isBoardOwner = board.OwnerId == userId;
+        var userRole = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == userId && user.IsActive)
+            .Select(user => (UserRole?)user.Role)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (!userRole.HasValue)
+        {
+            throw new ForbiddenException(
+                "Inactive or unknown accounts cannot access boards.");
+        }
+
+        var isAdmin = userRole == UserRole.Admin;
+        var isManager = userRole == UserRole.Manager;
+        var isBoardOwner =
+            board.OwnerId == userId &&
+            userRole == UserRole.Employee;
         var isWorkspaceOwner = await _dbContext.Workspaces
-            .AnyAsync(
-                workspace => workspace.Id == board.WorkspaceId &&
-                             workspace.OwnerId == userId,
-                cancellationToken);
+                    .AnyAsync(
+                        workspace => workspace.Id == board.WorkspaceId &&
+                                     workspace.OwnerId == userId,
+                        cancellationToken);
         var memberRole = await _dbContext.BoardMembers
             .Where(member => member.BoardId == boardId &&
                              member.UserId == userId)
@@ -80,7 +136,9 @@ public class BoardAuthorizationService : IBoardAuthorizationService
                           member.UserId == userId,
                 cancellationToken);
 
-        var isProjectManager = IsCurrentUserManager() &&
+        var isWorkspaceManager = isManager && hasWorkspaceAccess;
+
+        var isProjectManager = isManager &&
             hasWorkspaceAccess &&
             board.ProjectId.HasValue &&
             await _dbContext.Projects.AnyAsync(
@@ -96,6 +154,7 @@ public class BoardAuthorizationService : IBoardAuthorizationService
             IsBoardOwner = isBoardOwner,
             IsWorkspaceOwner = isWorkspaceOwner,
             IsProjectManager = isProjectManager,
+            IsWorkspaceManager = isWorkspaceManager,
             MemberRole = memberRole
         };
     }
@@ -136,7 +195,7 @@ public class BoardAuthorizationService : IBoardAuthorizationService
         if (!access.CanManageBoard)
         {
             throw new ForbiddenException(
-                "Only an administrator, board owner, workspace owner, or responsible Project Manager can manage this board.");
+                "Only an administrator, board owner, workspace owner, or active Manager with workspace access can manage this board.");
         }
 
         return access;
@@ -155,16 +214,19 @@ public class BoardAuthorizationService : IBoardAuthorizationService
 
         return access;
     }
+    public async Task<BoardAccessContext> EnsureCanDeleteBoardAsync(
+    Guid boardId,
+    CancellationToken cancellationToken = default)
+    {
+        var access = await GetAccessAsync(boardId, cancellationToken);
 
-    private bool IsCurrentUserAdmin() =>
-        string.Equals(
-            _currentUserService.Role,
-            nameof(UserRole.Admin),
-            StringComparison.Ordinal);
+        if (!access.CanDeleteBoard)
+        {
+            throw new ForbiddenException(
+                "Only an administrator or workspace owner can delete this board, its columns, or remove board members.");
+        }
 
-    private bool IsCurrentUserManager() =>
-        string.Equals(
-            _currentUserService.Role,
-            nameof(UserRole.Manager),
-            StringComparison.Ordinal);
+        return access;
+    }
+
 }

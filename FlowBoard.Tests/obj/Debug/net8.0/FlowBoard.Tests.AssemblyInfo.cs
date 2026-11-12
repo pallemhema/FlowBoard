@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("FlowBoard.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+67590ba70ae72277035438914d443261b1860932")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e7c61d87dcbc3118c7c058fbfd83f32764b9c02e")]
 [assembly: System.Reflection.AssemblyProductAttribute("FlowBoard.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("FlowBoard.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

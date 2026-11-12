@@ -1,133 +1,275 @@
 @page "/manager/boards"
+
 @attribute [Authorize(Policy = AuthorizationPolicies.ManagerOnly)]
+
 @implements IDisposable
 
-@using System.Net.Http
-@using System.Text.Json
 
 @inject IBoardApiService BoardApiService
+@inject IWorkspaceApiService WorkspaceApiService
 @inject NavigationManager Navigation
 
 <PageTitle>My Boards | FlowBoard</PageTitle>
-
 <div class="page-shell manager-boards">
-    <PageHeader Title="My boards"
-                Eyebrow="Your work"
-                Description="Boards you are independently authorized to access." />
 
-    <div class="manager-boards-search">
-        <SearchBox Value="@search"
-                   ValueChanged="HandleSearchChangedAsync"
-                   Placeholder="Search boards..." />
+    <div class="d-flex justify-content-between align-items-start gap-3">
+
+        <PageHeader Title="My boards"
+                    Eyebrow="Your work"
+                    Description="Boards you are independently authorized to access." />
+
+        <button type="button"
+                class="btn btn-primary flex-shrink-0"
+                @onclick="ShowCreateBoardForm"
+                disabled="@workspaceLoad.IsLoading">
+
+            <i class="bi bi-plus-lg me-2" aria-hidden="true"></i>
+            Create board
+
+        </button>
+
     </div>
 
-    @if (isLoading)
+    @if (showBoardForm)
     {
-        <div class="manager-boards-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-            <span>Loading your boards...</span>
-        </div>
-    }
-    else if (!string.IsNullOrWhiteSpace(errorMessage))
-    {
-        <div class="manager-boards-error" role="alert">
-            <span>@errorMessage</span>
-            <button type="button"
-                    class="btn btn-sm btn-outline-danger"
-                    @onclick="() => LoadBoardsAsync(page)">
-                Try again
-            </button>
-        </div>
-    }
-    else if (boardPage is { Items.Count: 0 })
-    {
-        <EmptyState Title="@(string.IsNullOrWhiteSpace(search) ? "No boards available" : "No boards match your search")"
-                    Message="@(string.IsNullOrWhiteSpace(search) ? "Boards you can access will appear here." : "Try changing your search.")" />
-    }
-    else if (boardPage is not null)
-    {
-        <div class="manager-boards-results-heading">
-            <p class="mb-0">@boardPage.TotalCount @(boardPage.TotalCount == 1 ? "board" : "boards")</p>
-        </div>
+        <section class="board-form-panel mb-4">
 
-        <section class="manager-board-grid" aria-label="Boards you can access">
-            @foreach (var board in boardPage.Items)
+            <div class="board-panel-heading">
+                <div>
+                    <p class="section-label mb-1">Board settings</p>
+                    <h2 class="h5 mb-0">Create a board</h2>
+                </div>
+
+                <button type="button"
+                        class="btn-close"
+                        aria-label="Close"
+                        @onclick="HideBoardForm"
+                        disabled="@createBoardOperation.IsSubmitting">
+                </button>
+            </div>
+
+            @if (workspaceLoad.IsLoading)
             {
-                <article class="manager-board-item" @key="board.Id">
-                    <BoardCard Board="board" OnOpen="OpenBoard" />
-
-                    <dl class="manager-board-details">
-                        <div>
-                            <dt>Workspace</dt>
-                            <dd>@board.WorkspaceName</dd>
-                        </div>
-                        @if (!string.IsNullOrWhiteSpace(board.ProjectName))
-                        {
-                            <div>
-                                <dt>Project</dt>
-                                <dd>@board.ProjectName</dd>
-                            </div>
-                        }
-                        <div>
-                            <dt>Purpose</dt>
-                            <dd>@GetPurposeLabel(board.Purpose)</dd>
-                        </div>
-                        <div>
-                            <dt>Your board role</dt>
-                            <dd>@(board.CurrentUserRole?.ToString() ?? "Access granted")</dd>
-                        </div>
-                    </dl>
-                </article>
+                <div class="py-3" role="status">
+                    <span class="spinner-border spinner-border-sm me-2"
+                        aria-hidden="true">
+                    </span>
+                    Loading your workspaces...
+                </div>
             }
-        </section>
+            else if (!string.IsNullOrWhiteSpace(workspaceLoad.Error))
+            {
+                <div class="alert alert-danger mt-3" role="alert">
+                    @workspaceLoad.Error
+                </div>
 
-        <Pagination CurrentPage="page"
-                    TotalPages="boardPage.TotalPages"
-                    TotalCount="boardPage.TotalCount"
-                    PageChanged="LoadBoardsAsync" />
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button"
+                            class="btn btn-outline-secondary"
+                            @onclick="HideBoardForm">
+                        Cancel
+                    </button>
+
+                    <button type="button"
+                            class="btn btn-primary"
+                            @onclick="ShowCreateBoardForm">
+                        Try again
+                    </button>
+                </div>
+            }
+            else if (workspaces.Count == 0)
+            {
+                <div class="alert alert-info mt-3">
+                    You don't have any workspaces where you can create boards.
+                </div>
+            }
+            else
+            {
+                <BoardForm Model="@boardForm"
+                        OnSubmit="@CreateBoardAsync"
+                        OnCancel="@HideBoardForm"
+                        IsLoading="@createBoardOperation.IsSubmitting"
+                        SubmitText="Create board"
+                        LoadingText="Creating..."
+                        ErrorMessage="@createBoardOperation.Error"
+                        ShowPurpose="true"
+                        ShowWorkspace="true"
+                        Workspaces="@workspaces"
+                        Projects="@formProjects"
+                        IsLoadingProjects="@projectLoad.IsLoading"
+                        OnPurposeChanged="@HandlePurposeChanged"
+                        OnWorkspaceChanged="@HandleWorkspaceChanged"
+                        FormName="manager-create-board" />
+            }
+
+        </section>
     }
+
+
+<DataListPanel Title="My Boards"
+               Description="Boards you are independently authorized to access."
+               CountText="@(boardList.Data is null
+                   ? null
+                   : $"{boardList.Data.TotalCount} boards")"
+               CssClass="manager-boards-list-panel">
+
+    <Toolbar>
+        <DataListToolBar SearchValue="@search"
+                         SearchValueChanged="HandleSearchChangedAsync"
+                         SearchPlaceholder="Search boards..." />
+    </Toolbar>
+
+    <ChildContent>
+
+        @if (boardList.IsLoading)
+        {
+            <div class="manager-boards-loading"
+                 role="status"
+                 aria-live="polite">
+
+                <span class="spinner-border spinner-border-sm text-primary"
+                      aria-hidden="true">
+                </span>
+
+                <span>Loading your boards...</span>
+            </div>
+        }
+        else if (!string.IsNullOrWhiteSpace(boardList.Error))
+        {
+            <div class="manager-boards-error" role="alert">
+                <span>@boardList.Error</span>
+
+                <button type="button"
+                        class="btn btn-sm btn-outline-danger"
+                        @onclick="() => LoadBoardsAsync(boardList.CurrentPage)">
+                    Try again
+                </button>
+            </div>
+        }
+        else if (boardList.Data is { Items.Count: 0 })
+        {
+            <EmptyState
+                Title="@(string.IsNullOrWhiteSpace(search)
+                    ? "No boards available"
+                    : "No boards match your search")"
+                Message="@(string.IsNullOrWhiteSpace(search)
+                    ? "Boards you can access will appear here."
+                    : "Try changing your search.")" />
+        }
+        else if (boardList.Data is not null)
+        {
+            <section class="manager-board-grid"
+                     aria-label="Boards you can access">
+
+                @foreach (var board in boardList.Data.Items)
+                {
+                    <article class="manager-board-item"
+                             @key="board.Id">
+
+                        <BoardCard Board="board"
+                                   OnOpen="OpenBoard" />
+
+                        <dl class="manager-board-details">
+
+                            <div>
+                                <dt>Workspace</dt>
+                                <dd>@board.WorkspaceName</dd>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(board.ProjectName))
+                            {
+                                <div>
+                                    <dt>Project</dt>
+                                    <dd>@board.ProjectName</dd>
+                                </div>
+                            }
+
+                            <div>
+                                <dt>Purpose</dt>
+                                <dd>@GetPurposeLabel(board.Purpose)</dd>
+                            </div>
+
+                            <div>
+                                <dt>Your board role</dt>
+                                <dd>
+                                    @(board.CurrentUserRole?.ToString()
+                                        ?? "Access granted")
+                                </dd>
+                            </div>
+
+                        </dl>
+                    </article>
+                }
+            </section>
+
+            <Pagination CurrentPage="@boardList.Data.Page"
+                        TotalPages="@boardList.Data.TotalPages"
+                        TotalCount="@boardList.Data.TotalCount"
+                        PageSize="@boardList.Data.PageSize"
+                        PageChanged="LoadBoardsAsync" />
+        }
+
+    </ChildContent>
+</DataListPanel>
 </div>
 
 @code {
-    private const int PageSize = 12;
 
-    private PagedResponse<BoardResponse>? boardPage;
+    private const int PageSize = PageSizeDefaults.Default;
+
+    // Board list
+    private PagedListState<BoardResponse> boardList = new()
+    {
+        PageSize = PageSize
+    };
+
+    // Search
     private string? search;
-    private string? errorMessage;
-    private bool isLoading;
-    private int page = 1;
+    private readonly DebouncedAction searchDebounce = new();
+
+    // Request management
     private long loadVersion;
     private CancellationTokenSource? activeLoadCts;
-    private CancellationTokenSource? searchDebounceCts;
 
-    protected override Task OnInitializedAsync() => LoadBoardsAsync(1);
+    // Board creation
+    private List<WorkspaceResponse> workspaces = [];
+    private List<BoardProjectOptionResponse> formProjects = [];
+    private BoardFormModel boardForm = new();
 
-    private async Task HandleSearchChangedAsync(string? value)
+    private bool showBoardForm;
+
+    // Async operations
+    private AsyncOperationState workspaceLoad = new();
+    private AsyncOperationState projectLoad = new();
+    private AsyncOperationState createBoardOperation = new();
+    protected override Task OnInitializedAsync()
     {
-        search = value;
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
-        var debounceCts = searchDebounceCts = new CancellationTokenSource();
+        return LoadBoardsAsync(1);
+    }
 
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(250), debounceCts.Token);
-            await LoadBoardsAsync(1);
-        }
-        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
-        {
-        }
+    // --------------------------------------------------
+    // Board listing and search
+    // --------------------------------------------------
+
+    private Task HandleSearchChangedAsync(string? value)
+    {
+        search = value?.Trim();
+
+        return searchDebounce.ExecuteAsync(
+            () => LoadBoardsAsync(1));
     }
 
     private async Task LoadBoardsAsync(int requestedPage)
     {
-        page = requestedPage;
-        errorMessage = null;
+        boardList.CurrentPage = requestedPage;
+        boardList.IsLoading = true;
+        boardList.Error = null;
+
         activeLoadCts?.Cancel();
         activeLoadCts?.Dispose();
+
         var loadCts = activeLoadCts = new CancellationTokenSource();
         var requestVersion = ++loadVersion;
-        isLoading = true;
 
         try
         {
@@ -135,65 +277,290 @@
                 new BoardQueryRequest
                 {
                     Page = requestedPage,
-                    PageSize = PageSize,
-                    Search = search?.Trim()
+                    PageSize = boardList.PageSize,
+                    Search = search
                 },
                 loadCts.Token);
 
             if (requestVersion != loadVersion)
-            {
                 return;
-            }
 
             if (result is null)
             {
-                boardPage = null;
-                errorMessage = "Unable to load your boards. Please try again.";
+                boardList.Data = null;
+                boardList.Error =
+                    "Unable to load your boards. Please try again.";
                 return;
             }
 
-            boardPage = result;
+            boardList.Data = result;
         }
-        catch (OperationCanceledException) when (loadCts.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (loadCts.IsCancellationRequested)
         {
         }
         catch (HttpRequestException)
         {
             if (requestVersion == loadVersion)
             {
-                boardPage = null;
-                errorMessage = "The board service could not be reached.";
+                boardList.Data = null;
+                boardList.Error =
+                    "The board service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (requestVersion == loadVersion)
             {
-                boardPage = null;
-                errorMessage = "The board service returned an invalid response.";
+                boardList.Data = null;
+                boardList.Error =
+                    "The board service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == loadVersion)
-            {
-                isLoading = false;
-            }
+                boardList.IsLoading = false;
         }
     }
 
-    private void OpenBoard(BoardResponse board) =>
-        Navigation.NavigateTo($"/workspaces/{board.WorkspaceId}/boards/{board.Id}");
+    private void OpenBoard(BoardResponse board)
+    {
+        Navigation.NavigateTo(
+            $"/workspaces/{board.WorkspaceId}/boards/{board.Id}");
+    }
 
-    private static string GetPurposeLabel(BoardPurpose purpose) =>
-        purpose == BoardPurpose.GeneralLearning
+    private static string GetPurposeLabel(BoardPurpose purpose)
+    {
+        return purpose == BoardPurpose.GeneralLearning
             ? "General / Learning"
             : "Project";
+    }
+
+    // --------------------------------------------------
+    // Create board: workspace loading
+    // --------------------------------------------------
+
+   private async Task ShowCreateBoardForm()
+{
+    if (workspaceLoad.IsLoading)
+        return;
+
+    showBoardForm = true;
+
+    workspaceLoad.IsLoading = true;
+    workspaceLoad.Error = null;
+    createBoardOperation.Error = null;
+
+    boardForm = new BoardFormModel();
+    workspaces = [];
+    formProjects = [];
+
+    try
+    {
+        var results = new List<WorkspaceResponse>();
+        var requestedPage = 1;
+        int totalPages;
+
+        do
+        {
+            var response = await WorkspaceApiService.GetAsync(
+                new PagedSearchRequest
+                {
+                    Page = requestedPage,
+                    PageSize = 100
+                });
+
+            if (response is null)
+            {
+                workspaceLoad.Error = "Unable to load your workspaces.";
+                return;
+            }
+
+            results.AddRange(response.Items);
+            totalPages = response.TotalPages;
+            requestedPage++;
+
+        } while (requestedPage <= totalPages);
+
+        workspaces = results;
+    }
+    catch (TimeoutException)
+    {
+        workspaceLoad.Error =
+            "Loading workspaces timed out. Please try again.";
+    }
+    catch (HttpRequestException)
+    {
+        workspaceLoad.Error =
+            "The workspace service could not be reached.";
+    }
+    catch (JsonException)
+    {
+        workspaceLoad.Error =
+            "The workspace service returned an invalid response.";
+    }
+    catch (OperationCanceledException)
+    {
+        workspaceLoad.Error =
+            "Loading workspaces was interrupted. Please try again.";
+    }
+    finally
+    {
+        workspaceLoad.IsLoading = false;
+    }
+}
+
+    // --------------------------------------------------
+    // Workspace selection and project loading
+    // --------------------------------------------------
+private async Task HandleWorkspaceChanged()
+{
+    formProjects = [];
+    boardForm.ProjectId = null;
+
+    projectLoad.Error = null;
+    projectLoad.IsLoading = false;
+    createBoardOperation.Error = null;
+
+    if (boardForm.WorkspaceId == Guid.Empty)
+        return;
+
+    projectLoad.IsLoading = true;
+
+    try
+    {
+        var projects = await BoardApiService.GetWorkspaceProjectsAsync(
+            boardForm.WorkspaceId);
+
+        if (projects is null)
+        {
+            projectLoad.Error =
+                "Unable to load projects for this workspace.";
+            return;
+        }
+
+        formProjects = projects.ToList();
+    }
+    catch (HttpRequestException)
+    {
+        projectLoad.Error =
+            "The project service could not be reached.";
+    }
+    catch (JsonException)
+    {
+        projectLoad.Error =
+            "Unable to process the project response.";
+    }
+    finally
+    {
+        projectLoad.IsLoading = false;
+    }
+}
+    // --------------------------------------------------
+    // Board purpose
+    // --------------------------------------------------
+
+    private Task HandlePurposeChanged()
+    {
+        createBoardOperation.Error = null;
+
+        return Task.CompletedTask;
+    }
+
+    // --------------------------------------------------
+    // Create board
+    // --------------------------------------------------
+
+   private async Task CreateBoardAsync()
+{
+    createBoardOperation.Error = null;
+
+    if (boardForm.WorkspaceId == Guid.Empty)
+    {
+        createBoardOperation.Error = "Select a workspace.";
+        return;
+    }
+
+    if (boardForm.Purpose == BoardPurpose.Project &&
+        !boardForm.ProjectId.HasValue)
+    {
+        createBoardOperation.Error =
+            "Select a project in this workspace.";
+        return;
+    }
+
+    if (boardForm.Purpose == BoardPurpose.Project &&
+        !formProjects.Any(p =>
+            p.ProjectId == boardForm.ProjectId))
+    {
+        createBoardOperation.Error =
+            "Select a valid project from the selected workspace.";
+        return;
+    }
+
+    createBoardOperation.IsSubmitting = true;
+
+    try
+    {
+        var request = new CreateBoardRequest
+        {
+            Name = boardForm.Name,
+            Description = boardForm.Description,
+            WorkspaceId = boardForm.WorkspaceId,
+            ProjectId = boardForm.Purpose == BoardPurpose.Project
+                ? boardForm.ProjectId
+                : null,
+            Purpose = boardForm.Purpose
+        };
+
+        var board = await BoardApiService.CreateAsync(request);
+
+        if (board is null)
+        {
+            createBoardOperation.Error =
+                "Unable to create the board.";
+            return;
+        }
+
+        Navigation.NavigateTo(
+            $"/workspaces/{boardForm.WorkspaceId}/boards/{board.Id}");
+    }
+    catch (Exception)
+    {
+        createBoardOperation.Error =
+            "Unable to create the board. Please try again.";
+    }
+    finally
+    {
+        createBoardOperation.IsSubmitting = false;
+    }
+}
+
+    // --------------------------------------------------
+    // Cancel board creation
+    // --------------------------------------------------
+
+private void HideBoardForm()
+{
+    showBoardForm = false;
+
+    boardForm = new BoardFormModel();
+    formProjects = [];
+
+    createBoardOperation.Error = null;
+    workspaceLoad.Error = null;
+    projectLoad.Error = null;
+
+    projectLoad.IsLoading = false;
+}
+    // --------------------------------------------------
+    // Dispose
+    // --------------------------------------------------
 
     public void Dispose()
     {
-        searchDebounceCts?.Cancel();
-        searchDebounceCts?.Dispose();
+
         activeLoadCts?.Cancel();
         activeLoadCts?.Dispose();
     }

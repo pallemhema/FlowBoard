@@ -738,8 +738,8 @@ public static class DevelopmentDataSeeder
             WorkspaceId = workspaceId,
             ManagerId = managerId,
             Status = ProjectStatus.Active,
-            StartDate = now,
-            EndDate = now.AddMonths(6)
+            StartDate = DateOnly.FromDateTime(now),
+            EndDate = DateOnly.FromDateTime(now).AddMonths(6)
         };
 
     private static ProjectMember CreateProjectMember(

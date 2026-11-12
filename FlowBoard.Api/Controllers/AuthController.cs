@@ -234,6 +234,19 @@ public class AuthController : ControllerBase
         return Ok(users);
     }
 
+    [Authorize(Policy = AuthorizationPolicies.AdminOnly)]
+    [HttpGet("employees")]
+    public async Task<ActionResult<PagedResponse<UserDirectoryResponse>>> GetEmployees(
+        [FromQuery] PagedSearchRequest request,
+        CancellationToken cancellationToken)
+    {
+        var employees = await _authService.GetEmployeesAsync(
+            request,
+            cancellationToken);
+
+        return Ok(employees);
+    }
+
     [Authorize(Policy = AuthorizationPolicies.AuthenticatedUser)]
     [HttpPut("profile")]
     public async Task<ActionResult<ProfileResponse>> UpdateProfile(

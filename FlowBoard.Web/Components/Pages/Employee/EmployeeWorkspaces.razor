@@ -1,15 +1,12 @@
 @page "/employee/workspaces"
 @page "/employee/workspaces/{Id:guid}"
+
 @attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
+
 @implements IDisposable
 
 @using System.Net.Http
 @using System.Text.Json
-@using FlowBoard.Shared.DTOs.Boards
-@using FlowBoard.Shared.DTOs.Projects
-@using FlowBoard.Shared.DTOs.Workspaces
-@using FlowBoard.Shared.Enums
-@using FlowBoard.Web.Components.Pages.Workspaces
 
 @inject IWorkspaceApiService WorkspaceApiService
 @inject IProjectApiService ProjectApiService
@@ -24,23 +21,30 @@ else
     <PageTitle>@(workspace?.Name ?? "My workspace") | FlowBoard</PageTitle>
 
     <div class="page-shell">
+
         <a class="btn btn-link px-0 mb-3"
            href="/employee/workspaces">
             <i class="bi bi-arrow-left me-1" aria-hidden="true"></i>
             Back to my workspaces
         </a>
 
-        @if (isLoadingWorkspace)
+        @if (workspaceLoad.IsLoading)
         {
-            <div class="text-center py-5" role="status" aria-live="polite">
-                <span class="spinner-border spinner-border-sm text-primary me-2" aria-hidden="true"></span>
+            <div class="text-center py-5"
+                 role="status"
+                 aria-live="polite">
+
+                <span class="spinner-border spinner-border-sm text-primary me-2"
+                      aria-hidden="true"></span>
+
                 Loading workspace...
             </div>
         }
         else if (workspace is null)
         {
             <div class="alert alert-danger" role="alert">
-                @workspaceError
+                @workspaceLoad.Error
+
                 <button type="button"
                         class="btn btn-sm btn-outline-danger ms-2"
                         @onclick="RetryLoadingAsync">
@@ -55,7 +59,10 @@ else
                         Description="Projects and boards you can access in this workspace." />
 
             <div class="mb-3">
-                <span class="text-secondary small d-block mb-1">Workspace owner</span>
+                <span class="text-secondary small d-block mb-1">
+                    Workspace owner
+                </span>
+
                 <WorkspaceOwner OwnerName="@workspace.OwnerName"
                                 OwnerEmail="@workspace.OwnerEmail"
                                 SizeRem="1.75" />
@@ -63,45 +70,77 @@ else
 
             @if (!string.IsNullOrWhiteSpace(workspace.Description))
             {
-                <p class="text-secondary mb-4">@workspace.Description</p>
+                <p class="text-secondary mb-4">
+                    @workspace.Description
+                </p>
             }
 
-            <div class="row g-3 mb-4" aria-label="Accessible workspace resources">
+            @* Accessible resource counts *@
+
+            <div class="row g-3 mb-4"
+                 aria-label="Accessible workspace resources">
+
                 <div class="col-6 col-lg-3">
                     <div class="card h-100">
                         <div class="card-body">
-                            <p class="text-secondary mb-1">Accessible projects</p>
-                            <strong class="fs-4">@(isLoadingProjects ? "—" : accessibleProjects.Count)</strong>
+                            <p class="text-secondary mb-1">
+                                Accessible projects
+                            </p>
+
+                            <strong class="fs-4">
+                                @(projectsLoad.IsLoading
+                                    ? "—"
+                                    : accessibleProjects.Count)
+                            </strong>
                         </div>
                     </div>
                 </div>
+
                 <div class="col-6 col-lg-3">
                     <div class="card h-100">
                         <div class="card-body">
-                            <p class="text-secondary mb-1">Accessible boards</p>
-                            <strong class="fs-4">@(isLoadingBoards ? "—" : accessibleBoards.Count)</strong>
+                            <p class="text-secondary mb-1">
+                                Accessible boards
+                            </p>
+
+                            <strong class="fs-4">
+                                @(boardsLoad.IsLoading
+                                    ? "—"
+                                    : accessibleBoards.Count)
+                            </strong>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <section class="mb-5" aria-labelledby="accessible-projects-title">
+            @* Accessible projects *@
+
+            <section class="mb-5"
+                     aria-labelledby="accessible-projects-title">
+
                 <div class="d-flex align-items-center justify-content-between gap-3 mb-3">
-                    <h2 class="h4 mb-0" id="accessible-projects-title">Accessible projects</h2>
+                    <h2 class="h4 mb-0"
+                        id="accessible-projects-title">
+                        Accessible projects
+                    </h2>
+
                     <a class="btn btn-sm btn-outline-primary"
                        href="@($"/employee/projects?workspaceId={workspace.Id}")">
                         View in My Projects
                     </a>
                 </div>
 
-                @if (isLoadingProjects)
+                @if (projectsLoad.IsLoading)
                 {
-                    <div class="py-3" role="status">Loading accessible projects...</div>
+                    <div class="py-3" role="status">
+                        Loading accessible projects...
+                    </div>
                 }
-                else if (!string.IsNullOrWhiteSpace(projectsError))
+                else if (!string.IsNullOrWhiteSpace(projectsLoad.Error))
                 {
                     <div class="alert alert-danger" role="alert">
-                        @projectsError
+                        @projectsLoad.Error
+
                         <button type="button"
                                 class="btn btn-sm btn-outline-danger ms-2"
                                 @onclick="RetryLoadingAsync">
@@ -122,13 +161,20 @@ else
                             <a class="list-group-item list-group-item-action"
                                href="@($"/employee/projects?workspaceId={workspace.Id}&projectId={project.ProjectId}")"
                                @key="project.ProjectId">
+
                                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                                     <strong>@project.Name</strong>
-                                    <span class="badge text-bg-light">@project.Status</span>
+
+                                    <span class="badge text-bg-light">
+                                        @project.Status
+                                    </span>
                                 </div>
+
                                 @if (!string.IsNullOrWhiteSpace(project.Description))
                                 {
-                                    <span class="d-block text-secondary small mt-1">@project.Description</span>
+                                    <span class="d-block text-secondary small mt-1">
+                                        @project.Description
+                                    </span>
                                 }
                             </a>
                         }
@@ -136,17 +182,26 @@ else
                 }
             </section>
 
-            <section aria-labelledby="accessible-boards-title">
-                <h2 class="h4 mb-3" id="accessible-boards-title">Accessible boards</h2>
+            @* Accessible boards *@
 
-                @if (isLoadingBoards)
+            <section aria-labelledby="accessible-boards-title">
+
+                <h2 class="h4 mb-3"
+                    id="accessible-boards-title">
+                    Accessible boards
+                </h2>
+
+                @if (boardsLoad.IsLoading)
                 {
-                    <div class="py-3" role="status">Loading accessible boards...</div>
+                    <div class="py-3" role="status">
+                        Loading accessible boards...
+                    </div>
                 }
-                else if (!string.IsNullOrWhiteSpace(boardsError))
+                else if (!string.IsNullOrWhiteSpace(boardsLoad.Error))
                 {
                     <div class="alert alert-danger" role="alert">
-                        @boardsError
+                        @boardsLoad.Error
+
                         <button type="button"
                                 class="btn btn-sm btn-outline-danger ms-2"
                                 @onclick="RetryLoadingAsync">
@@ -167,25 +222,38 @@ else
                             <a class="list-group-item list-group-item-action"
                                href="@($"/workspaces/{board.WorkspaceId}/boards/{board.Id}")"
                                @key="board.Id">
+
                                 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                                     <strong>@board.Name</strong>
+
                                     <span class="d-flex flex-wrap gap-2">
                                         <span class="badge text-bg-light">
-                                            @(board.Purpose == BoardPurpose.GeneralLearning ? "General / Learning" : "Project")
+                                            @(board.Purpose == BoardPurpose.GeneralLearning
+                                                ? "General / Learning"
+                                                : "Project")
                                         </span>
+
                                         @if (board.CurrentUserRole.HasValue)
                                         {
-                                            <span class="badge text-bg-secondary">@board.CurrentUserRole.Value</span>
+                                            <span class="badge text-bg-secondary">
+                                                @board.CurrentUserRole.Value
+                                            </span>
                                         }
                                     </span>
                                 </div>
+
                                 @if (!string.IsNullOrWhiteSpace(board.Description))
                                 {
-                                    <span class="d-block text-secondary small mt-1">@board.Description</span>
+                                    <span class="d-block text-secondary small mt-1">
+                                        @board.Description
+                                    </span>
                                 }
+
                                 @if (!string.IsNullOrWhiteSpace(board.ProjectName))
                                 {
-                                    <span class="d-block text-secondary small mt-1">Project: @board.ProjectName</span>
+                                    <span class="d-block text-secondary small mt-1">
+                                        Project: @board.ProjectName
+                                    </span>
                                 }
                             </a>
                         }
@@ -202,58 +270,71 @@ else
     [Parameter]
     public Guid? Id { get; set; }
 
+    private readonly AsyncOperationState workspaceLoad = new();
+    private readonly AsyncOperationState projectsLoad = new();
+    private readonly AsyncOperationState boardsLoad = new();
+
     private WorkspaceResponse? workspace;
+
     private List<ProjectResponse> accessibleProjects = [];
     private List<BoardResponse> accessibleBoards = [];
-    private string? workspaceError;
-    private string? projectsError;
-    private string? boardsError;
-    private bool isLoadingWorkspace;
-    private bool isLoadingProjects;
-    private bool isLoadingBoards;
+
     private Guid? loadedWorkspaceId;
+
     private long loadVersion;
     private CancellationTokenSource? activeLoad;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Id is not Guid workspaceId || loadedWorkspaceId == workspaceId)
+        if (Id is not Guid workspaceId)
+        {
+            CancelActiveLoad();
+            loadedWorkspaceId = null;
+            return;
+        }
+
+        if (loadedWorkspaceId == workspaceId)
         {
             return;
         }
 
         loadedWorkspaceId = workspaceId;
+
         await LoadWorkspaceAsync(workspaceId);
     }
 
-    private async Task RetryLoadingAsync()
+    private Task RetryLoadingAsync()
     {
         if (Id is Guid workspaceId)
         {
-            await LoadWorkspaceAsync(workspaceId);
+            return LoadWorkspaceAsync(workspaceId);
         }
+
+        return Task.CompletedTask;
     }
 
     private async Task LoadWorkspaceAsync(Guid workspaceId)
     {
-        activeLoad?.Cancel();
-        activeLoad?.Dispose();
+        CancelActiveLoad();
+
         var cancellation = activeLoad = new CancellationTokenSource();
         var requestVersion = ++loadVersion;
 
         workspace = null;
         accessibleProjects = [];
         accessibleBoards = [];
-        workspaceError = null;
-        projectsError = null;
-        boardsError = null;
-        isLoadingWorkspace = true;
-        isLoadingProjects = false;
-        isLoadingBoards = false;
+
+        workspaceLoad.Error = null;
+        projectsLoad.Error = null;
+        boardsLoad.Error = null;
+
+        workspaceLoad.IsLoading = true;
+        projectsLoad.IsLoading = false;
+        boardsLoad.IsLoading = false;
 
         try
         {
-            workspace = await WorkspaceApiService.GetByIdAsync(
+            var result = await WorkspaceApiService.GetByIdAsync(
                 workspaceId,
                 cancellation.Token);
 
@@ -262,39 +343,61 @@ else
                 return;
             }
 
+            workspace = result;
+
             if (workspace is null)
             {
-                workspaceError = "This workspace is unavailable or you do not have access.";
+                workspaceLoad.Error =
+                    "This workspace is unavailable or you do not have access.";
+
                 return;
             }
         }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellation.IsCancellationRequested)
         {
             return;
         }
         catch (HttpRequestException)
         {
-            workspaceError = "The workspace service could not be reached.";
+            workspaceLoad.Error =
+                "The workspace service could not be reached.";
+
             return;
         }
         catch (JsonException)
         {
-            workspaceError = "The workspace service returned an invalid response.";
+            workspaceLoad.Error =
+                "The workspace service returned an invalid response.";
+
             return;
         }
         finally
         {
             if (requestVersion == loadVersion)
             {
-                isLoadingWorkspace = false;
+                workspaceLoad.IsLoading = false;
             }
         }
 
-        isLoadingProjects = true;
-        isLoadingBoards = true;
+        if (requestVersion != loadVersion)
+        {
+            return;
+        }
+
+        projectsLoad.IsLoading = true;
+        boardsLoad.IsLoading = true;
+
         await Task.WhenAll(
-            LoadAccessibleProjectsAsync(workspaceId, requestVersion, cancellation.Token),
-            LoadAccessibleBoardsAsync(workspaceId, requestVersion, cancellation.Token));
+            LoadAccessibleProjectsAsync(
+                workspaceId,
+                requestVersion,
+                cancellation.Token),
+
+            LoadAccessibleBoardsAsync(
+                workspaceId,
+                requestVersion,
+                cancellation.Token));
     }
 
     private async Task LoadAccessibleProjectsAsync(
@@ -307,6 +410,7 @@ else
             var results = new List<ProjectResponse>();
             var page = 1;
             int totalPages;
+
             do
             {
                 var response = await ProjectApiService.GetMineAsync(
@@ -318,44 +422,56 @@ else
                     },
                     cancellationToken);
 
+                if (requestVersion != loadVersion)
+                {
+                    return;
+                }
+
                 if (response is null)
                 {
-                    if (requestVersion == loadVersion)
-                    {
-                        projectsError = "Unable to load projects you can access in this workspace.";
-                    }
+                    projectsLoad.Error =
+                        "Unable to load projects you can access in this workspace.";
+
                     return;
                 }
 
                 results.AddRange(response.Items);
+
                 totalPages = response.TotalPages;
                 page++;
+
             } while (page <= totalPages);
 
-            accessibleProjects = results;
+            if (requestVersion == loadVersion)
+            {
+                accessibleProjects = results;
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (HttpRequestException)
         {
             if (requestVersion == loadVersion)
             {
-                projectsError = "The project service could not be reached.";
+                projectsLoad.Error =
+                    "The project service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (requestVersion == loadVersion)
             {
-                projectsError = "The project service returned an invalid response.";
+                projectsLoad.Error =
+                    "The project service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == loadVersion)
             {
-                isLoadingProjects = false;
+                projectsLoad.IsLoading = false;
             }
         }
     }
@@ -370,6 +486,7 @@ else
             var results = new List<BoardResponse>();
             var page = 1;
             int totalPages;
+
             do
             {
                 var response = await BoardApiService.GetAsync(
@@ -381,51 +498,71 @@ else
                     },
                     cancellationToken);
 
+                if (requestVersion != loadVersion)
+                {
+                    return;
+                }
+
                 if (response is null)
                 {
-                    if (requestVersion == loadVersion)
-                    {
-                        boardsError = "Unable to load boards you can access in this workspace.";
-                    }
+                    boardsLoad.Error =
+                        "Unable to load boards you can access in this workspace.";
+
                     return;
                 }
 
                 results.AddRange(response.Items);
+
                 totalPages = response.TotalPages;
                 page++;
+
             } while (page <= totalPages);
 
-            accessibleBoards = results;
+            if (requestVersion == loadVersion)
+            {
+                accessibleBoards = results;
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested)
         {
         }
         catch (HttpRequestException)
         {
             if (requestVersion == loadVersion)
             {
-                boardsError = "The board service could not be reached.";
+                boardsLoad.Error =
+                    "The board service could not be reached.";
             }
         }
         catch (JsonException)
         {
             if (requestVersion == loadVersion)
             {
-                boardsError = "The board service returned an invalid response.";
+                boardsLoad.Error =
+                    "The board service returned an invalid response.";
             }
         }
         finally
         {
             if (requestVersion == loadVersion)
             {
-                isLoadingBoards = false;
+                boardsLoad.IsLoading = false;
             }
         }
     }
 
-    public void Dispose()
+    private void CancelActiveLoad()
     {
         activeLoad?.Cancel();
         activeLoad?.Dispose();
+        activeLoad = null;
+
+        loadVersion++;
+    }
+
+    public void Dispose()
+    {
+        CancelActiveLoad();
     }
 }

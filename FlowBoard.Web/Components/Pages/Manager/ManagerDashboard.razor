@@ -4,13 +4,6 @@
 
 @using System.Net.Http
 @using System.Text.Json
-@using FlowBoard.Shared.DTOs.Boards
-@using FlowBoard.Shared.DTOs.Common
-@using FlowBoard.Shared.DTOs.ManagerEmployees
-@using FlowBoard.Shared.DTOs.MyTasks
-@using FlowBoard.Shared.DTOs.Projects
-@using FlowBoard.Shared.DTOs.Teams
-@using FlowBoard.Shared.DTOs.Workspaces
 
 @inject IManagerEmployeeApiService ManagerEmployeeApiService
 @inject ITeamApiService TeamApiService
@@ -27,63 +20,75 @@
                 Eyebrow="Manager overview"
                 Description="A focused view of your direct reports, team memberships, accessible work, and assigned tasks." />
 
-    @if (isLoading)
+    @if (employeesLoad.IsLoading ||
+         teamsLoad.IsLoading ||
+         workspacesLoad.IsLoading ||
+         projectsLoad.IsLoading ||
+         boardsLoad.IsLoading ||
+         tasksLoad.IsLoading)
     {
-        <div class="manager-dashboard-loading" role="status" aria-live="polite">
-            <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+        <div class="manager-dashboard-loading"
+             role="status"
+             aria-live="polite">
+
+            <span class="spinner-border spinner-border-sm text-primary"
+                  aria-hidden="true"></span>
+
             <span>Loading your management overview…</span>
+
         </div>
     }
 
-    <section class="manager-stat-grid" aria-label="Manager overview statistics">
+    <section class="manager-stat-grid"
+             aria-label="Manager overview statistics">
 
         <DashboardStatCard Label="Direct reports"
                            Icon="bi-people"
                            IconTone="stat-tone-indigo"
                            Value="@(employeesCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@employeesLoad.IsLoading"
                            IsUnavailable="@(employeesCount is null)"
-                           UnavailableReason="@employeesError" />
+                           UnavailableReason="@employeesLoad.Error" />
 
         <DashboardStatCard Label="Teams"
                            Icon="bi-diagram-3"
                            IconTone="stat-tone-green"
                            Value="@(teamsCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@teamsLoad.IsLoading"
                            IsUnavailable="@(teamsCount is null)"
-                           UnavailableReason="@teamsError" />
+                           UnavailableReason="@teamsLoad.Error" />
 
         <DashboardStatCard Label="Accessible workspaces"
                            Icon="bi-grid"
                            IconTone="stat-tone-amber"
                            Value="@(workspacesCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@workspacesLoad.IsLoading"
                            IsUnavailable="@(workspacesCount is null)"
-                           UnavailableReason="@workspacesError" />
+                           UnavailableReason="@workspacesLoad.Error" />
 
         <DashboardStatCard Label="Accessible projects"
                            Icon="bi-kanban"
                            IconTone="stat-tone-violet"
                            Value="@(projectsCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@projectsLoad.IsLoading"
                            IsUnavailable="@(projectsCount is null)"
-                           UnavailableReason="@projectsError" />
+                           UnavailableReason="@projectsLoad.Error" />
 
         <DashboardStatCard Label="Accessible boards"
                            Icon="bi-columns-gap"
                            IconTone="stat-tone-blue"
                            Value="@(boardsCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@boardsLoad.IsLoading"
                            IsUnavailable="@(boardsCount is null)"
-                           UnavailableReason="@boardsError" />
+                           UnavailableReason="@boardsLoad.Error" />
 
         <DashboardStatCard Label="Tasks assigned to you"
                            Icon="bi-check2-square"
                            IconTone="stat-tone-indigo"
                            Value="@(assignedTasksCount ?? 0)"
-                           IsLoading="@isLoading"
+                           IsLoading="@tasksLoad.IsLoading"
                            IsUnavailable="@(assignedTasksCount is null)"
-                           UnavailableReason="@tasksError" />
+                           UnavailableReason="@tasksLoad.Error" />
 
     </section>
 
@@ -93,14 +98,19 @@
                  aria-labelledby="assigned-tasks-title">
 
             <div class="manager-panel-heading">
+
                 <div>
                     <p class="section-label mb-1">Your workload</p>
                     <h2 id="assigned-tasks-title">Tasks assigned to you</h2>
                 </div>
 
-                <span class="manager-panel-icon manager-panel-icon-blue" aria-hidden="true">
+                <span class="manager-panel-icon manager-panel-icon-blue"
+                      aria-hidden="true">
+
                     <i class="bi bi-check2-square"></i>
+
                 </span>
+
             </div>
 
         </section>
@@ -112,6 +122,8 @@
 @code {
     private const int PreviewPageSize = 1;
 
+    // Dashboard metric values
+
     private int? employeesCount;
     private int? teamsCount;
     private int? workspacesCount;
@@ -119,162 +131,282 @@
     private int? boardsCount;
     private int? assignedTasksCount;
 
-    private string? employeesError;
-    private string? teamsError;
-    private string? workspacesError;
-    private string? projectsError;
-    private string? boardsError;
-    private string? tasksError;
+    // Independent metric loading and error states
 
-    private bool isLoading = true;
-
-    protected override async Task OnInitializedAsync()
+    private AsyncOperationState employeesLoad = new()
     {
-        try
-        {
-            await Task.WhenAll(
-                LoadEmployeesAsync(),
-                LoadTeamsAsync(),
-                LoadWorkspacesAsync(),
-                LoadProjectsAsync(),
-                LoadBoardsAsync(),
-                LoadAssignedTasksAsync());
-        }
-        finally
-        {
-            isLoading = false;
-        }
+        IsLoading = true
+    };
+
+    private AsyncOperationState teamsLoad = new()
+    {
+        IsLoading = true
+    };
+
+    private AsyncOperationState workspacesLoad = new()
+    {
+        IsLoading = true
+    };
+
+    private AsyncOperationState projectsLoad = new()
+    {
+        IsLoading = true
+    };
+
+    private AsyncOperationState boardsLoad = new()
+    {
+        IsLoading = true
+    };
+
+    private AsyncOperationState tasksLoad = new()
+    {
+        IsLoading = true
+    };
+
+    protected override Task OnInitializedAsync()
+    {
+        return Task.WhenAll(
+            LoadEmployeesAsync(),
+            LoadTeamsAsync(),
+            LoadWorkspacesAsync(),
+            LoadProjectsAsync(),
+            LoadBoardsAsync(),
+            LoadAssignedTasksAsync());
     }
+
+    // Direct reports
 
     private async Task LoadEmployeesAsync()
     {
+        employeesLoad.IsLoading = true;
+        employeesLoad.Error = null;
+
         try
         {
             var result = await ManagerEmployeeApiService.GetManagedEmployeesAsync(
-                new PagedRequest { Page = 1, PageSize = PreviewPageSize });
+                new PagedRequest
+                {
+                    Page = 1,
+                    PageSize = PreviewPageSize
+                });
 
             employeesCount = result?.TotalCount;
 
             if (result is null)
-                employeesError = "Direct reports are unavailable.";
+            {
+                employeesLoad.Error = "Direct reports are unavailable.";
+            }
         }
         catch (HttpRequestException)
         {
-            employeesError = "The Manager-Employee service could not be reached.";
+            employeesLoad.Error =
+                "The Manager-Employee service could not be reached.";
         }
         catch (JsonException)
         {
-            employeesError = "The Manager-Employee service returned an invalid response.";
+            employeesLoad.Error =
+                "The Manager-Employee service returned an invalid response.";
+        }
+        finally
+        {
+            employeesLoad.IsLoading = false;
         }
     }
 
+    // Teams
+
     private async Task LoadTeamsAsync()
     {
+        teamsLoad.IsLoading = true;
+        teamsLoad.Error = null;
+
         try
         {
             var result = await TeamApiService.GetMineAsync(
-                new PagedSearchRequest { Page = 1, PageSize = PreviewPageSize });
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = PreviewPageSize
+                });
 
             teamsCount = result?.TotalCount;
 
             if (result is null)
-                teamsError = "Team membership totals are unavailable.";
+            {
+                teamsLoad.Error = "Team membership totals are unavailable.";
+            }
         }
         catch (HttpRequestException)
         {
-            teamsError = "The team service could not be reached.";
+            teamsLoad.Error = "The team service could not be reached.";
         }
         catch (JsonException)
         {
-            teamsError = "The team service returned an invalid response.";
+            teamsLoad.Error = "The team service returned an invalid response.";
+        }
+        finally
+        {
+            teamsLoad.IsLoading = false;
         }
     }
 
+    // Accessible workspaces
+
     private async Task LoadWorkspacesAsync()
     {
+        workspacesLoad.IsLoading = true;
+        workspacesLoad.Error = null;
+
         try
         {
             var result = await WorkspaceApiService.GetAsync(
-                new PagedSearchRequest { Page = 1, PageSize = PreviewPageSize });
+                new PagedSearchRequest
+                {
+                    Page = 1,
+                    PageSize = PreviewPageSize
+                });
 
             workspacesCount = result?.TotalCount;
 
             if (result is null)
-                workspacesError = "Accessible workspace totals are unavailable.";
+            {
+                workspacesLoad.Error =
+                    "Accessible workspace totals are unavailable.";
+            }
         }
         catch (HttpRequestException)
         {
-            workspacesError = "The workspace service could not be reached.";
+            workspacesLoad.Error =
+                "The workspace service could not be reached.";
         }
         catch (JsonException)
         {
-            workspacesError = "The workspace service returned an invalid response.";
+            workspacesLoad.Error =
+                "The workspace service returned an invalid response.";
+        }
+        finally
+        {
+            workspacesLoad.IsLoading = false;
         }
     }
 
+    // Accessible projects
+
     private async Task LoadProjectsAsync()
     {
+        projectsLoad.IsLoading = true;
+        projectsLoad.Error = null;
+
         try
         {
             var result = await ProjectApiService.GetMineAsync(
-                new ProjectQueryRequest { Page = 1, PageSize = PreviewPageSize });
+                new ProjectQueryRequest
+                {
+                    Page = 1,
+                    PageSize = PreviewPageSize
+                });
 
             projectsCount = result?.TotalCount;
 
             if (result is null)
-                projectsError = "Accessible project totals are unavailable.";
+            {
+                projectsLoad.Error =
+                    "Accessible project totals are unavailable.";
+            }
         }
         catch (HttpRequestException)
         {
-            projectsError = "The project service could not be reached.";
+            projectsLoad.Error =
+                "The project service could not be reached.";
         }
         catch (JsonException)
         {
-            projectsError = "The project service returned an invalid response.";
+            projectsLoad.Error =
+                "The project service returned an invalid response.";
+        }
+        finally
+        {
+            projectsLoad.IsLoading = false;
         }
     }
 
+    // Accessible boards
+
     private async Task LoadBoardsAsync()
     {
+        boardsLoad.IsLoading = true;
+        boardsLoad.Error = null;
+
         try
         {
             var result = await BoardApiService.GetAsync(
-                new BoardQueryRequest { Page = 1, PageSize = PreviewPageSize });
+                new BoardQueryRequest
+                {
+                    Page = 1,
+                    PageSize = PreviewPageSize
+                });
 
             boardsCount = result?.TotalCount;
 
             if (result is null)
-                boardsError = "Accessible board totals are unavailable.";
+            {
+                boardsLoad.Error =
+                    "Accessible board totals are unavailable.";
+            }
         }
         catch (HttpRequestException)
         {
-            boardsError = "The board service could not be reached.";
+            boardsLoad.Error =
+                "The board service could not be reached.";
         }
         catch (JsonException)
         {
-            boardsError = "The board service returned an invalid response.";
+            boardsLoad.Error =
+                "The board service returned an invalid response.";
+        }
+        finally
+        {
+            boardsLoad.IsLoading = false;
         }
     }
 
+    // Assigned tasks
+
     private async Task LoadAssignedTasksAsync()
     {
+        tasksLoad.IsLoading = true;
+        tasksLoad.Error = null;
+
         try
         {
             var result = await TaskApiService.GetMyTasksAsync(
-                new MyTasksQueryRequest { Page = 1, PageSize = PreviewPageSize });
+                new MyTasksQueryRequest
+                {
+                    Page = 1,
+                    PageSize = PreviewPageSize
+                });
 
             assignedTasksCount = result?.TotalCount;
 
             if (result is null)
-                tasksError = "Assigned task totals are unavailable.";
+            {
+                tasksLoad.Error =
+                    "Assigned task totals are unavailable.";
+            }
         }
         catch (HttpRequestException)
         {
-            tasksError = "The task service could not be reached.";
+            tasksLoad.Error =
+                "The task service could not be reached.";
         }
         catch (JsonException)
         {
-            tasksError = "The task service returned an invalid response.";
+            tasksLoad.Error =
+                "The task service returned an invalid response.";
+        }
+        finally
+        {
+            tasksLoad.IsLoading = false;
         }
     }
 }

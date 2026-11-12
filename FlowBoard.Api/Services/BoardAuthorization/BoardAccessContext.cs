@@ -15,22 +15,31 @@ public sealed class BoardAccessContext
 
     public required bool IsProjectManager { get; init; }
 
+    public required bool IsWorkspaceManager { get; init; }
+
     public BoardMemberRole? MemberRole { get; init; }
+
+
+
+
 
     public bool CanView =>
         IsAdmin ||
         IsBoardOwner ||
         IsWorkspaceOwner ||
-        IsProjectManager ||
+        IsWorkspaceManager ||
         MemberRole.HasValue;
-
     public bool CanManageBoard =>
         IsAdmin ||
         IsBoardOwner ||
         IsWorkspaceOwner ||
-        IsProjectManager;
+        IsWorkspaceManager;
 
     public bool CanEditContent => CanManageBoard;
+
+    public bool CanDeleteBoard =>
+        IsAdmin ||
+        IsWorkspaceOwner;
 
     public bool CanComment => CanView;
 }

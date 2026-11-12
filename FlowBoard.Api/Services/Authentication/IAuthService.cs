@@ -49,6 +49,10 @@ public interface IAuthService
         PagedSearchRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResponse<UserDirectoryResponse>> GetEmployeesAsync(
+        PagedSearchRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<ProfileResponse?> UpdateProfileAsync(
 Guid userId,
 UpdateProfileRequest request,

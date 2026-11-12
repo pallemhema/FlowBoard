@@ -21,6 +21,15 @@ public sealed class ControllerAuthorizationMetadataTests
     }
 
     [Fact]
+    public void EmployeeDirectoryEndpointRequiresAdminPolicy()
+    {
+        AssertMethodPolicy(
+            typeof(AuthController),
+            nameof(AuthController.GetEmployees),
+            AuthorizationPolicies.AdminOnly);
+    }
+
+    [Fact]
     public void ProfileEndpointsUseAuthenticatedCurrentUserWithoutUserIdInput()
     {
         AssertMethodPolicy(

@@ -1,8 +1,9 @@
 @page "/employee/teams"
+
 @attribute [Authorize(Policy = AuthorizationPolicies.EmployeeOnly)]
 
+@using System.Net.Http
 @using System.Text.Json
-@using FlowBoard.Shared.DTOs.ManagerEmployees
 
 @inject IManagerEmployeeApiService ManagerEmployeeApiService
 @inject ProfileApiService ProfileApiService
@@ -10,33 +11,54 @@
 <PageTitle>My Teams | FlowBoard</PageTitle>
 
 <div class="page-shell employee-teams-page">
+
     <PageHeader Title="My Teams"
                 Eyebrow="Your organization"
                 Description="View your reporting Manager and your team memberships separately." />
 
     <div class="employee-org-grid">
-        <section class="employee-reporting-panel" aria-labelledby="employee-reporting-manager-title">
+
+        @* Reporting Manager *@
+
+        <section class="employee-reporting-panel"
+                 aria-labelledby="employee-reporting-manager-title">
+
             <div class="employee-reporting-heading">
                 <div>
                     <p class="section-label mb-1">Reporting relationship</p>
-                    <h2 id="employee-reporting-manager-title">My Reporting Manager</h2>
+                    <h2 id="employee-reporting-manager-title">
+                        My Reporting Manager
+                    </h2>
                     <p>Your Manager assignment is independent of team membership.</p>
                 </div>
-                <span class="employee-reporting-icon" aria-hidden="true"><i class="bi bi-person-badge"></i></span>
+
+                <span class="employee-reporting-icon" aria-hidden="true">
+                    <i class="bi bi-person-badge"></i>
+                </span>
             </div>
 
-            @if (isLoadingManagers)
+            @if (managersLoad.IsLoading)
             {
-                <div class="employee-reporting-loading" role="status" aria-live="polite">
-                    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-                    <span>Loading your reporting Manager…</span>
+                <div class="employee-reporting-loading"
+                     role="status"
+                     aria-live="polite">
+
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
+
+                    <span>Loading your reporting Manager...</span>
                 </div>
             }
-            else if (!string.IsNullOrWhiteSpace(managersError))
+            else if (!string.IsNullOrWhiteSpace(managersLoad.Error))
             {
                 <div class="employee-reporting-error" role="alert">
-                    <span>@managersError</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadManagersAsync(currentManagerPage)">Retry</button>
+                    <span>@managersLoad.Error</span>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-auto"
+                            @onclick="() => LoadManagersAsync(currentManagerPage)">
+                        Retry
+                    </button>
                 </div>
             }
             else if (managersPage is { Items.Count: 0 })
@@ -47,87 +69,144 @@
             else if (managersPage is not null)
             {
                 <div class="employee-manager-list">
+
                     @foreach (var relationship in managersPage.Items)
                     {
-                        <article class="employee-manager-row" @key="relationship.ManagerId">
+                        <article class="employee-manager-row"
+                                 @key="relationship.ManagerId">
+
                             <UserAvatar FirstName="@relationship.Manager.FirstName"
                                         LastName="@relationship.Manager.LastName"
                                         SizeRem="2.75" />
+
                             <div class="employee-manager-copy">
                                 <strong>@GetUserName(relationship.Manager)</strong>
                                 <span>@relationship.Manager.Email</span>
-                                <span class="employee-role-badge">@GetRole(relationship.Manager.Role)</span>
-                                <small>Reporting relationship since @relationship.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")</small>
+
+                                <span class="employee-role-badge">
+                                    @GetRole(relationship.Manager.Role)
+                                </span>
+
+                                <small>
+                                    Reporting relationship since
+                                    @relationship.CreatedAt.ToLocalTime().ToString("MMM d, yyyy")
+                                </small>
                             </div>
                         </article>
                     }
                 </div>
+
                 @if (managersPage.TotalCount > 1)
                 {
                     <p class="employee-reporting-note">
-                        @managersPage.TotalCount reporting relationships are recorded. The current database does not enforce a single Manager per Employee.
+                        @managersPage.TotalCount reporting relationships are recorded.
+                        The current database does not enforce a single Manager per Employee.
                     </p>
                 }
-                @if (managersPage.TotalCount > managersPage.PageSize)
-                {
-                    <Pagination CurrentPage="@managersPage.Page"
-                                TotalPages="@managersPage.TotalPages"
-                                TotalCount="@managersPage.TotalCount"
-                                PageChanged="LoadManagersAsync" />
-                }
+
+                <Pagination CurrentPage="@managersPage.Page"
+                            TotalPages="@managersPage.TotalPages"
+                            TotalCount="@managersPage.TotalCount"
+                            PageSize="@managersPage.PageSize"
+                            PageChanged="LoadManagersAsync" />
             }
         </section>
 
-        <section class="employee-reporting-panel" aria-labelledby="employee-reporting-group-title">
+        @* Reporting Group *@
+
+        <section class="employee-reporting-panel"
+                 aria-labelledby="employee-reporting-group-title">
+
             <div class="employee-reporting-heading">
                 <div>
                     <p class="section-label mb-1">Shared reporting relationship</p>
-                    <h2 id="employee-reporting-group-title">My Reporting Group</h2>
+
+                    <h2 id="employee-reporting-group-title">
+                        My Reporting Group
+                    </h2>
+
                     <p>Employees linked to the same reporting Manager as you.</p>
                 </div>
-                <span class="employee-reporting-icon employee-reporting-icon-green" aria-hidden="true"><i class="bi bi-people"></i></span>
+
+                <span class="employee-reporting-icon employee-reporting-icon-green"
+                      aria-hidden="true">
+                    <i class="bi bi-people"></i>
+                </span>
             </div>
 
-            @if (isLoadingReportingGroup)
+            @if (reportingGroupLoad.IsLoading)
             {
-                <div class="employee-reporting-loading" role="status" aria-live="polite">
-                    <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-                    <span>Loading your reporting group…</span>
+                <div class="employee-reporting-loading"
+                     role="status"
+                     aria-live="polite">
+
+                    <span class="spinner-border spinner-border-sm text-primary"
+                          aria-hidden="true"></span>
+
+                    <span>Loading your reporting group...</span>
                 </div>
             }
-            else if (!string.IsNullOrWhiteSpace(reportingGroupError))
+            else if (!string.IsNullOrWhiteSpace(reportingGroupLoad.Error))
             {
                 <div class="employee-reporting-error" role="alert">
-                    <span>@reportingGroupError</span>
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="() => LoadReportingGroupAsync(currentReportingGroupPage)">Retry</button>
+                    <span>@reportingGroupLoad.Error</span>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-auto"
+                            @onclick="() => LoadReportingGroupAsync(currentReportingGroupPage)">
+                        Retry
+                    </button>
                 </div>
             }
             else if (profile is not null && reportingGroupPage is not null)
             {
                 <div class="employee-reporting-group-list">
+
                     <article class="employee-reporting-group-person employee-reporting-group-self">
+
                         <UserAvatar FirstName="@profile.FirstName"
                                     LastName="@profile.LastName"
                                     SizeRem="2.5" />
+
                         <div class="employee-reporting-group-copy">
                             <strong>@GetUserName(profile)</strong>
                             <span>@profile.Email</span>
-                            <span class="employee-role-badge">@GetRole(profile.Role)</span>
+
+                            <span class="employee-role-badge">
+                                @GetRole(profile.Role)
+                            </span>
                         </div>
+
                         <span class="employee-self-label">You</span>
                     </article>
+
                     @foreach (var colleague in reportingGroupPage.Items)
                     {
-                        <article class="employee-reporting-group-person" @key="colleague.EmployeeId">
+                        <article class="employee-reporting-group-person"
+                                 @key="colleague.EmployeeId">
+
                             <UserAvatar FirstName="@colleague.FirstName"
                                         LastName="@colleague.LastName"
                                         SizeRem="2.5" />
+
                             <div class="employee-reporting-group-copy">
-                                <strong>@GetUserName(colleague.FirstName, colleague.LastName, colleague.Email)</strong>
+                                <strong>
+                                    @GetUserName(
+                                        colleague.FirstName,
+                                        colleague.LastName,
+                                        colleague.Email)
+                                </strong>
+
                                 <span>@colleague.Email</span>
-                                <span class="employee-role-badge">@GetRole(colleague.Role)</span>
+
+                                <span class="employee-role-badge">
+                                    @GetRole(colleague.Role)
+                                </span>
                             </div>
-                            <span class="employee-colleague-label">Colleague</span>
+
+                            <span class="employee-colleague-label">
+                                Colleague
+                            </span>
                         </article>
                     }
                 </div>
@@ -140,38 +219,45 @@
                             : "No other employees currently share your reporting Manager.")
                     </p>
                 }
-                @if (reportingGroupPage.TotalCount > reportingGroupPage.PageSize)
-                {
-                    <Pagination CurrentPage="@reportingGroupPage.Page"
-                                TotalPages="@reportingGroupPage.TotalPages"
-                                TotalCount="@reportingGroupPage.TotalCount"
-                                PageChanged="LoadReportingGroupAsync" />
-                }
+
+                <Pagination CurrentPage="@reportingGroupPage.Page"
+                            TotalPages="@reportingGroupPage.TotalPages"
+                            TotalCount="@reportingGroupPage.TotalCount"
+                            PageSize="@reportingGroupPage.PageSize"
+                            PageChanged="LoadReportingGroupAsync" />
             }
             else if (profile is null)
             {
                 <div class="employee-reporting-error" role="alert">
-                    @profileError
-                    <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadProfileAsync">Retry</button>
+                    <span>@profileLoad.Error</span>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-auto"
+                            @onclick="LoadProfileAsync">
+                        Retry
+                    </button>
                 </div>
             }
         </section>
+
     </div>
 
     <TeamMemberships />
+
 </div>
 
 @code {
     private const int PageSize = 10;
 
+    private readonly AsyncOperationState managersLoad = new();
+    private readonly AsyncOperationState reportingGroupLoad = new();
+    private readonly AsyncOperationState profileLoad = new();
+
     private PagedResponse<ManagerEmployeeResponse>? managersPage;
     private PagedResponse<ReportingGroupMemberResponse>? reportingGroupPage;
+
     private ProfileResponse? profile;
-    private string? managersError;
-    private string? reportingGroupError;
-    private string? profileError;
-    private bool isLoadingManagers = true;
-    private bool isLoadingReportingGroup = true;
+
     private int currentManagerPage = 1;
     private int currentReportingGroupPage = 1;
 
@@ -180,114 +266,164 @@
         await Task.WhenAll(
             LoadManagersAsync(1),
             LoadProfileAsync());
+
         await LoadReportingGroupAsync(1);
     }
 
     private async Task LoadManagersAsync(int page)
     {
         currentManagerPage = page;
-        isLoadingManagers = true;
-        managersError = null;
+
+        managersLoad.IsLoading = true;
+        managersLoad.Error = null;
+
         try
         {
             managersPage = await ManagerEmployeeApiService.GetMyManagersAsync(
-                new PagedRequest { Page = page, PageSize = PageSize });
+                new PagedRequest
+                {
+                    Page = page,
+                    PageSize = PageSize
+                });
+
             if (managersPage is null)
             {
-                managersError = "Your reporting Manager information is unavailable.";
+                managersLoad.Error =
+                    "Your reporting Manager information is unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            managersError = "The reporting relationship service could not be reached.";
+            managersLoad.Error =
+                "The reporting relationship service could not be reached.";
         }
         catch (JsonException)
         {
-            managersError = "The reporting relationship service returned an invalid response.";
+            managersLoad.Error =
+                "The reporting relationship service returned an invalid response.";
         }
         finally
         {
-            isLoadingManagers = false;
+            managersLoad.IsLoading = false;
         }
     }
 
     private async Task LoadReportingGroupAsync(int page)
     {
         currentReportingGroupPage = page;
-        isLoadingReportingGroup = true;
-        reportingGroupError = null;
+
+        reportingGroupLoad.IsLoading = true;
+        reportingGroupLoad.Error = null;
+
         reportingGroupPage = null;
 
         try
         {
             if (managersPage is { TotalCount: > 1 })
             {
-                reportingGroupError = "Multiple reporting Managers are recorded for your account, so the active reporting group cannot be determined.";
+                reportingGroupLoad.Error =
+                    "Multiple reporting Managers are recorded for your account, so the active reporting group cannot be determined.";
+
                 return;
             }
 
-            reportingGroupPage = await ManagerEmployeeApiService.GetMyReportingGroupAsync(
-                new PagedRequest { Page = page, PageSize = PageSize });
+            reportingGroupPage =
+                await ManagerEmployeeApiService.GetMyReportingGroupAsync(
+                    new PagedRequest
+                    {
+                        Page = page,
+                        PageSize = PageSize
+                    });
+
             if (reportingGroupPage is null)
             {
-                reportingGroupError = "Your reporting group is unavailable.";
+                reportingGroupLoad.Error =
+                    "Your reporting group is unavailable.";
             }
         }
         catch (HttpRequestException)
         {
-            reportingGroupError = "The reporting group service could not be reached.";
+            reportingGroupLoad.Error =
+                "The reporting group service could not be reached.";
         }
         catch (JsonException)
         {
-            reportingGroupError = "The reporting group service returned an invalid response.";
+            reportingGroupLoad.Error =
+                "The reporting group service returned an invalid response.";
         }
         finally
         {
-            isLoadingReportingGroup = false;
+            reportingGroupLoad.IsLoading = false;
         }
     }
 
     private async Task LoadProfileAsync()
     {
-        profileError = null;
+        profileLoad.IsLoading = true;
+        profileLoad.Error = null;
+
         try
         {
             profile = await ProfileApiService.GetProfileAsync();
+
             if (profile is null)
             {
-                profileError = "Your employee profile is unavailable, so the reporting group cannot be identified.";
+                profileLoad.Error =
+                    "Your employee profile is unavailable, so the reporting group cannot be identified.";
             }
         }
         catch (HttpRequestException)
         {
             profile = null;
-            profileError = "The profile service could not be reached, so the reporting group cannot be identified.";
+
+            profileLoad.Error =
+                "The profile service could not be reached, so the reporting group cannot be identified.";
         }
         catch (JsonException)
         {
             profile = null;
-            profileError = "The profile service returned an invalid response, so the reporting group cannot be identified.";
+
+            profileLoad.Error =
+                "The profile service returned an invalid response, so the reporting group cannot be identified.";
+        }
+        finally
+        {
+            profileLoad.IsLoading = false;
         }
     }
 
     private static string GetUserName(UserDirectoryResponse user)
     {
         var fullName = $"{user.FirstName} {user.LastName}".Trim();
-        return string.IsNullOrWhiteSpace(fullName) ? user.Email : fullName;
+
+        return string.IsNullOrWhiteSpace(fullName)
+            ? user.Email
+            : fullName;
     }
 
-    private static string GetUserName(string firstName, string lastName, string email)
+    private static string GetUserName(
+        string firstName,
+        string lastName,
+        string email)
     {
         var fullName = $"{firstName} {lastName}".Trim();
-        return string.IsNullOrWhiteSpace(fullName) ? email : fullName;
+
+        return string.IsNullOrWhiteSpace(fullName)
+            ? email
+            : fullName;
     }
 
     private static string GetUserName(ProfileResponse user)
     {
         var fullName = $"{user.FirstName} {user.LastName}".Trim();
-        return string.IsNullOrWhiteSpace(fullName) ? user.Email : fullName;
+
+        return string.IsNullOrWhiteSpace(fullName)
+            ? user.Email
+            : fullName;
     }
 
     private static string GetRole(string? role) =>
-        string.IsNullOrWhiteSpace(role) ? "Role unavailable" : role;
+        string.IsNullOrWhiteSpace(role)
+            ? "Role unavailable"
+            : role;
 }

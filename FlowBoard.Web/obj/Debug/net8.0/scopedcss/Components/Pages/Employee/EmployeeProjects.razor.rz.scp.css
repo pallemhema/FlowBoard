@@ -2,10 +2,7 @@
   max-width: 1540px;
 }
 
-.employee-projects-search[b-xamty0j26a] {
-  max-width: 34rem;
-  margin-bottom: 1.25rem;
-}
+/* Loading and errors */
 
 .projects-loading[b-xamty0j26a] {
   display: flex;
@@ -31,12 +28,7 @@
   line-height: 1.5;
 }
 
-.projects-results-heading[b-xamty0j26a] {
-  margin-bottom: 0.7rem;
-  color: var(--flowboard-ink);
-  font-size: 0.84rem;
-  font-weight: 650;
-}
+/* Project cards */
 
 .employee-project-grid[b-xamty0j26a] {
   display: grid;
@@ -138,6 +130,8 @@
   margin-top: auto;
 }
 
+/* Project details */
+
 .employee-project-details[b-xamty0j26a] {
   margin-top: 1.5rem;
   padding: 1.25rem;
@@ -168,6 +162,8 @@
   line-height: 1.55;
 }
 
+/* Project facts */
+
 .employee-project-facts[b-xamty0j26a] {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -195,6 +191,8 @@
   font-size: 0.8rem;
   font-weight: 650;
 }
+
+/* Accessible boards */
 
 .employee-project-boards[b-xamty0j26a] {
   padding-top: 1rem;
@@ -256,6 +254,8 @@
   color: var(--flowboard-muted);
   font-size: 0.7rem;
 }
+
+/* Responsive layout */
 
 @media (max-width: 1050px) {
   .employee-project-grid[b-xamty0j26a] {

@@ -64,3 +64,7 @@
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Pages/Manager/ManagerBoards.razor.rz.scp.css
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Shared/WorkspaceOwner.razor.rz.scp.css
 /home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Shared/GlobalSearch.razor.rz.scp.css
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Shared/DataDIsplay/DataListPanel.razor.rz.scp.css
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Shared/DataDIsplay/DataListToolBar.razor.rz.scp.css
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Shared/DataDIsplay/DataTable.razor.rz.scp.css
+/home/hemalatha.pallem/Desktop/FlowBoard/FlowBoard.Web/obj/Debug/net8.0/scopedcss/Components/Shared/DataDIsplay/DataListSelectFilter.razor.rz.scp.css

@@ -55,6 +55,18 @@ public class BoardsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("workspaces/{workspaceId:guid}/projects")]
+    public async Task<ActionResult<IReadOnlyList<BoardProjectOptionResponse>>> GetWorkspaceProjects(
+        Guid workspaceId,
+        CancellationToken cancellationToken)
+    {
+        var projects = await _boardService.GetWorkspaceProjectsAsync(
+            workspaceId,
+            cancellationToken);
+
+        return Ok(projects);
+    }
+
     // ============================================================
     // GET BY ID
     // ============================================================

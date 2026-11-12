@@ -1,0 +1,69 @@
+@typeparam TItem
+@using System.Linq
+<div class="data-table-wrapper @(MobileTemplate is not null ? "has-mobile-template" : "")">
+
+    @* Desktop table *@
+    <div class="table-responsive">
+        <table class="@CssClass">
+            <thead>
+                <tr>
+                    @foreach (var column in Columns)
+                    {
+                        <th scope="col" class="@column.HeaderClass">
+                            @column.Header
+                        </th>
+                    }
+                </tr>
+            </thead>
+
+            <tbody>
+                @if (Items is not null)
+                {
+                    @foreach (var item in Items)
+                    {
+                        <tr @key="GetItemKey(item)">
+                            @foreach (var column in Columns)
+                            {
+                                <td class="@column.CellClass">
+                                    @column.Template(item)
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (MobileTemplate is not null)
+    {
+        <div class="data-table-mobile">
+            @foreach (var item in Items ?? Enumerable.Empty<TItem>())
+            {
+                @MobileTemplate(item)
+            }
+        </div>
+    }
+</div>
+@code {
+    [Parameter, EditorRequired]
+    public IEnumerable<TItem> Items { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<DataTableColumn<TItem>> Columns { get; set; } = [];
+
+    [Parameter]
+    public Func<TItem, object>? ItemKeySelector { get; set; }
+
+    [Parameter]
+    public string CssClass { get; set; } = "table align-middle";
+
+
+    [Parameter]
+public RenderFragment<TItem>? MobileTemplate { get; set; }
+
+    private object? GetItemKey(TItem item)
+    {
+        return ItemKeySelector?.Invoke(item);
+    }
+}
